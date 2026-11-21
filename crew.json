@@ -1,0 +1,39 @@
+{
+  "departments": [
+    {"id": "research", "name": "Research", "tr": "Araştırma", "code": "RES", "color": "#38bdf8", "icon": "Telescope", "mission": "Market sizing, competitor analysis and customer research, always with cited sources."},
+    {"id": "marketing", "name": "Content & Marketing", "tr": "İçerik & Pazarlama", "code": "MKT", "color": "#f472b6", "icon": "Megaphone", "mission": "Launch posts, newsletters, case studies and release notes in the company voice."},
+    {"id": "design", "name": "Design", "tr": "Tasarım", "code": "DSN", "color": "#f87171", "icon": "PenTool", "mission": "Landing pages, product UX and the brand system."},
+    {"id": "engineering", "name": "Engineering", "tr": "Mühendislik", "code": "ENG", "color": "#a3e635", "icon": "CodeXml", "mission": "API fixes, pull-request reviews, CI and deploys."},
+    {"id": "support", "name": "Support & Ops", "tr": "Destek & Operasyon", "code": "OPS", "color": "#fb923c", "icon": "LifeBuoy", "mission": "Ticket triage, SLA reporting, help-center articles and incident updates."},
+    {"id": "finance", "name": "Finance", "tr": "Finans", "code": "FIN", "color": "#facc15", "icon": "Landmark", "mission": "Monthly burn, invoice reconciliation, pricing and board metrics."}
+  ],
+  "workers": [
+    {"id": "nova", "dept": "research", "lead": true, "name": "NOVA", "role": "Head of Research", "does": "Frames research questions, splits them across the analysts and writes the final briefing.", "skills": ["research plan", "briefing"]},
+    {"id": "piri", "dept": "research", "name": "PIRI", "role": "Market Analyst", "does": "Sizes markets and segments, estimates TAM and finds numbers with sources.", "skills": ["market sizing", "tam", "segment"]},
+    {"id": "lale", "dept": "research", "name": "LALE", "role": "Competitive Intelligence", "does": "Tracks competitors' pricing, launches, changelogs and public reviews.", "skills": ["competitor", "pricing scan", "changelog"]},
+    {"id": "orkun", "dept": "research", "name": "ORKUN", "role": "Data Analyst", "does": "Turns product analytics, SQL exports and spreadsheets into clear findings.", "skills": ["analytics", "metrics", "sql"]},
+    {"id": "derin", "dept": "research", "name": "DERIN", "role": "Customer Research", "does": "Synthesises interview notes, win/loss reviews and NPS comments into themes.", "skills": ["interview", "win/loss", "nps"]},
+    {"id": "mira", "dept": "marketing", "lead": true, "name": "MIRA", "role": "Head of Marketing", "does": "Owns the content calendar, guards the company voice and edits every outgoing piece.", "skills": ["content plan", "editing", "voice"]},
+    {"id": "atlas", "dept": "marketing", "name": "ATLAS", "role": "Long-form Writer", "does": "Writes launch posts, blog articles and customer case studies.", "skills": ["launch post", "blog", "case study"]},
+    {"id": "suna", "dept": "marketing", "name": "SUNA", "role": "Social & Community", "does": "Writes LinkedIn and X posts and community announcements.", "skills": ["linkedin", "post", "community"]},
+    {"id": "efe", "dept": "marketing", "name": "EFE", "role": "Lifecycle & Newsletter", "does": "Writes the monthly customer newsletter, onboarding emails and release notes.", "skills": ["newsletter", "release notes", "onboarding email"]},
+    {"id": "zeyno", "dept": "marketing", "name": "ZEYNO", "role": "Product Marketing", "does": "Shapes positioning, messaging and launch plans for new features.", "skills": ["positioning", "messaging", "launch plan"]},
+    {"id": "ece", "dept": "design", "lead": true, "name": "ECE", "role": "Head of Design", "does": "Sets design direction, reviews every brief and keeps the brand system consistent.", "skills": ["design review", "brand system"]},
+    {"id": "defne", "dept": "design", "name": "DEFNE", "role": "Product Designer", "does": "Maps product flows and onboarding; writes wireframe specs and usability notes.", "skills": ["ux", "wireframe", "onboarding"]},
+    {"id": "mert", "dept": "design", "name": "MERT", "role": "Web Designer", "does": "Designs landing pages, pricing pages and marketing-site sections.", "skills": ["landing page", "pricing page", "website"]},
+    {"id": "asli", "dept": "design", "name": "ASLI", "role": "Brand Designer", "does": "Maintains the brand system: logo use, type, colour tokens and templates.", "skills": ["brand", "design tokens", "template"]},
+    {"id": "tura", "dept": "engineering", "lead": true, "name": "TURA", "role": "Head of Engineering", "does": "Plans sprints, breaks features into tickets and reviews technical designs.", "skills": ["sprint", "roadmap", "ticket"]},
+    {"id": "bora", "dept": "engineering", "name": "BORA", "role": "Frontend Engineer", "does": "Builds the web app UI and marketing pages; writes front-end code and specs.", "skills": ["frontend", "ui", "web app"]},
+    {"id": "kaya", "dept": "engineering", "name": "KAYA", "role": "Backend Engineer", "does": "Fixes API bugs and designs endpoints, data models and integrations.", "skills": ["api", "backend", "database", "bug"], "effort": "high"},
+    {"id": "ilgin", "dept": "engineering", "name": "ILGIN", "role": "Code Review & QA", "does": "Reviews pull requests, writes test plans and ranks bugs by impact.", "skills": ["pr review", "code review", "test plan"], "effort": "high"},
+    {"id": "arda", "dept": "engineering", "name": "ARDA", "role": "Platform Engineer", "does": "Owns CI, deploys, rollbacks and the release checklist.", "skills": ["deploy", "ci", "release", "rollback"]},
+    {"id": "selin", "dept": "support", "lead": true, "name": "SELIN", "role": "Head of Support & Ops", "does": "Sets support policy, escalation rules and the weekly SLA report.", "skills": ["support policy", "escalation", "sla"]},
+    {"id": "umut", "dept": "support", "name": "UMUT", "role": "Ticket Triage", "does": "Sorts the ticket queue by severity, drafts replies and flags SLA risks.", "skills": ["ticket", "triage", "reply", "inbox"], "model": "haiku"},
+    {"id": "naz", "dept": "support", "name": "NAZ", "role": "Knowledge Base", "does": "Keeps help-center articles current from what customers keep asking.", "skills": ["help article", "faq", "docs"], "model": "haiku"},
+    {"id": "kerem", "dept": "support", "name": "KEREM", "role": "Incidents & Bug Intake", "does": "Turns customer bug reports into reproducible tickets and drafts incident updates.", "skills": ["bug report", "repro", "incident"]},
+    {"id": "dora", "dept": "finance", "lead": true, "name": "DORA", "role": "Head of Finance", "does": "Owns the budget, monthly burn and runway, and the board metrics pack.", "skills": ["burn", "runway", "board metrics"], "effort": "high"},
+    {"id": "can", "dept": "finance", "name": "CAN", "role": "Accounts & Invoicing", "does": "Reconciles invoices against payments, chases overdue accounts and tracks payables.", "skills": ["invoice", "reconciliation", "overdue"]},
+    {"id": "irem", "dept": "finance", "name": "IREM", "role": "Pricing Analyst", "does": "Models plans, seat pricing, discounts and annual-prepay offers.", "skills": ["pricing", "discount", "plan"]},
+    {"id": "onur", "dept": "finance", "name": "ONUR", "role": "Revenue Reporting", "does": "Builds MRR, churn and expansion reports from billing exports.", "skills": ["mrr", "churn", "revenue report"]}
+  ]
+}

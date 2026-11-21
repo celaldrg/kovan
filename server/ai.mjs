@@ -1,0 +1,99 @@
+// Model backends: the local Claude Code CLI (preferred), the Anthropic Messages API, or a
+// built-in demo writer so the hive is alive with no setup at all.
+import { spawn, spawnSync } from 'node:child_process';
+
+export const MODELS = ['sonnet', 'opus', 'haiku'];
+export const EFFORTS = ['', 'low', 'medium', 'high'];
+const API_IDS = { sonnet: 'claude-sonnet-4-5', opus: 'claude-opus-4-1', haiku: 'claude-haiku-4-5' };
+
+function hasCli() {
+  if (process.env.KOVAN_DEMO === '1') return false;
+  const r = spawnSync(process.platform === 'win32' ? 'where' : 'which', ['claude'], { encoding: 'utf8' });
+  return r.status === 0 && r.stdout.trim().length > 0;
+}
+
+export function detectBackend() {
+  if (process.env.KOVAN_DEMO === '1') return 'demo';
+  if (hasCli()) return 'claude-cli';
+  if (process.env.ANTHROPIC_API_KEY) return 'api';
+  return 'demo';
+}
+
+const EFFORT_HINT = { low: 'Be brief; a quick pass is enough.', medium: '', high: 'Think it through carefully before answering.' };
+
+function runCli(prompt, { model, effort, tools = true, timeoutMs = 10 * 60e3 }) {
+  return new Promise((resolve, reject) => {
+    const args = ['-p', '--output-format', 'json', '--model', model];
+    // Workers may use connectors and web search, never the shell or file editing.
+    args.push('--disallowedTools', 'Bash,Edit,Write,MultiEdit,NotebookEdit,Task');
+    const child = spawn('claude', args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    let out = '', err = '';
+    const t = setTimeout(() => { child.kill('SIGTERM'); reject(new Error('timed out')); }, timeoutMs);
+    child.stdout.on('data', d => (out += d));
+    child.stderr.on('data', d => (err += d));
+    child.on('error', e => { clearTimeout(t); reject(e); });
+    child.on('close', code => {
+      clearTimeout(t);
+      try {
+        const j = JSON.parse(out);
+        if (j.is_error) return reject(new Error(j.result || 'CLI error'));
+        const u = j.usage || {};
+        resolve({ text: String(j.result || '').trim(), tokens: (u.input_tokens || 0) + (u.output_tokens || 0) + (u.cache_creation_input_tokens || 0) });
+      } catch { reject(new Error(err.trim() || `claude exited ${code}`)); }
+    });
+    child.stdin.end((EFFORT_HINT[effort] ? EFFORT_HINT[effort] + '\n\n' : '') + prompt);
+  });
+}
+
+async function runApi(prompt, { model, effort }) {
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({ model: process.env.KOVAN_MODEL_ID || API_IDS[model] || API_IDS.sonnet, max_tokens: effort === 'low' ? 1200 : 4000, messages: [{ role: 'user', content: (EFFORT_HINT[effort] ? EFFORT_HINT[effort] + '\n\n' : '') + prompt }] }),
+  });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j?.error?.message || `API ${r.status}`);
+  return { text: j.content.map(c => c.text || '').join('').trim(), tokens: (j.usage?.input_tokens || 0) + (j.usage?.output_tokens || 0) };
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// ---- demo writer: plausible, clearly-marked placeholder work ----
+function demoText(kind, ctx) {
+  const { worker, task, notes = [], lessons = [] } = ctx;
+  const cite = notes.slice(0, 3).map(n => `“${n.title}”`).join(', ') || 'the vault';
+  if (kind === 'route') return null;
+  if (kind === 'chat') {
+    return `Hi, ${worker.name} here (${worker.role}). Based on ${cite}, my take on “${task}”: start small, keep it in the company voice, and I can turn it into a full deliverable if you add it as a task. *(demo mode — connect Claude Code for real answers)*`;
+  }
+  const bullets = notes.slice(0, 3).map(n => `- From **${n.title}**: ${n.body.split('\n').find(l => /^[-\d]/.test(l.trim()))?.replace(/^[-\d.\s]+/, '') || 'context noted.'}`).join('\n');
+  return [
+    `## ${kind === 'merge' ? 'Combined result' : 'Deliverable'}: ${task}`,
+    '',
+    `Prepared by ${worker.name}, ${worker.role}.`,
+    '',
+    '### What I used',
+    bullets || '- No matching notes; worked from the brief alone.',
+    '',
+    '### Draft',
+    `1. Goal — ${task}.`,
+    '2. Approach — follow the house rules above, keep it short, one clear call to action.',
+    '3. Next step — review, then say `revise: …` in my chat if anything should change.',
+    lessons.length ? `\n### Rules I followed\n${lessons.map(l => `- ${l}`).join('\n')}` : '',
+    '',
+    '*Demo mode: this is placeholder output. Install and log in to Claude Code (or set `ANTHROPIC_API_KEY`) for real work.*',
+  ].join('\n');
+}
+
+export function createAI(backend) {
+  return {
+    backend,
+    /** kind: 'work' | 'chat' | 'route' | 'split' | 'merge' | 'classify'. ctx is used by the demo writer. */
+    async run(prompt, { model = 'sonnet', effort = '', kind = 'work', ctx = {}, tools = true } = {}) {
+      if (backend === 'claude-cli') return runCli(prompt, { model, effort, tools: tools && kind !== 'route' && kind !== 'classify' });
+      if (backend === 'api') return runApi(prompt, { model, effort });
+      await sleep(kind === 'chat' ? 700 : kind === 'route' ? 150 : 3500 + Math.random() * 5000);
+      return { text: demoText(kind, ctx) ?? '', tokens: kind === 'route' ? 0 : Math.round(900 + Math.random() * 4200), demo: true };
+    },
+  };
+}

@@ -1,0 +1,9 @@
+{
+  "name": "Tessellane Labs",
+  "vault": "./vault",
+  "port": 4700,
+  "model": "sonnet",
+  "effort": "",
+  "connectors": { "allow": [], "deny": [] },
+  "swarm": { "enabled": true, "max": 3 }
+}

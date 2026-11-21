@@ -1,0 +1,77 @@
+// Headless smoke test: boots the server in demo mode on a temp data dir, opens the page,
+// sends a task, waits for it to finish, opens each sheet, and fails on any page error.
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import puppeteer from 'puppeteer-core';
+
+const port = 4799;
+const data = fs.mkdtempSync(path.join(os.tmpdir(), 'kovan-'));
+const vault = path.join(data, 'vault');
+fs.cpSync(path.resolve('vault'), vault, { recursive: true });
+const server = spawn('node', ['server/index.mjs'], { env: { ...process.env, KOVAN_PORT: String(port), KOVAN_DATA: data, KOVAN_VAULT: vault, KOVAN_DEMO: '1', KOVAN_AUTOPILOT: '0' }, stdio: 'inherit' });
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const chrome = process.env.CHROME_PATH || ['/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'].find(p => fs.existsSync(p));
+let failed = false;
+const ok = (c, m) => { console.log(`${c ? '✓' : '✗'} ${m}`); if (!c) failed = true; };
+try {
+  await sleep(1200);
+  const browser = await puppeteer.launch({ executablePath: chrome, headless: true, args: ['--no-sandbox', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const page = await browser.newPage();
+  await page.setViewport({ width: 1440, height: 900 });
+  const errors = [];
+  page.on('pageerror', e => errors.push(String(e)));
+  page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+  await page.goto(`http://localhost:${port}/`, { waitUntil: 'networkidle2' });
+  await page.waitForSelector('#stage canvas');
+  ok(await page.$eval('#backend', e => e.textContent.trim() === 'Demo'), 'page boots in demo mode');
+  await page.waitForSelector('#splash', { hidden: true, timeout: 15000 });
+  ok(true, 'splash screen hands over to the hive');
+  ok((await page.$$('.lbl.dept')).length === 6, 'six department zones rendered');
+  await page.type('#task', 'size the market for customer-feedback tools in the Nordics');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.querySelector('.flt[data-f="done"] b')?.textContent === '1', { timeout: 20000 });
+  ok(true, 'task routed, worked and finished');
+  await page.click('#dpickBtn'); await sleep(300);
+  await page.click('#dmenu button[data-d="design"]');
+  await page.type('#task', 'review the onboarding flow');
+  ok(await page.$eval('#hint', e => e.textContent.includes('Design')), 'department picker drives the routing hint');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => [...document.querySelectorAll('.job .tag.dp')].some(t => t.textContent === 'DSN'), { timeout: 8000 });
+  ok(true, 'task sent to the chosen department');
+  await page.click('#dpickBtn'); await sleep(300); await page.click('#dmenu button[data-d=""]');
+  await page.type('#task', '@finans list overdue invoices');
+  ok(await page.$eval('#hint', e => e.textContent.includes('Finance')), '@department prefix recognised');
+  await page.evaluate(() => { document.querySelector('#task').value = ''; });
+  await page.type('#task', 'every weekday at 9am triage new support tickets');
+  ok(await page.$eval('#hint', e => e.textContent.includes('weekdays · 09:00')), 'schedule hint shown');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.job.routine', { timeout: 5000 });
+  ok(true, 'routine created');
+  for (const k of ['a', 'v', 'k', 'b', 'd']) {
+    await page.evaluate(() => document.activeElement.blur());
+    await page.keyboard.press(k); await sleep(600);
+    ok(await page.$eval('#sheet', e => e.classList.contains('open')), `sheet ${k} opens`);
+    await page.keyboard.press('Escape'); await sleep(200);
+  }
+  await page.evaluate(() => document.activeElement.blur());
+  await page.keyboard.press('a'); await sleep(700);
+  const agents = await page.$$eval('.acards .acard', els => els.map(e => e.querySelector('.chip-m')?.textContent || ''));
+  ok(agents.length > 0 && agents.every(Boolean), `agents view lists ${agents.length} agent cards with model`);
+  await page.keyboard.press('Escape'); await sleep(300);
+  ok(await page.$$eval('.pulse .stat', els => els.length) === 5, 'metrics HUD shows five live stats');
+  await page.evaluate(() => document.activeElement.blur());
+  await page.keyboard.press('d'); await sleep(700);
+  ok((await page.$$('.dgrid .dcard')).length === 6, 'departments view lists six department cards');
+  await page.click('.dcard[data-dept="engineering"] [data-fly]'); await sleep(600);
+  ok(await page.$eval('#dfocus', e => e.classList.contains('open') && e.textContent.includes('Engineering')), 'fly-to-department opens its focus card');
+  await page.keyboard.press('Escape'); await sleep(300);
+  await sleep(800);
+  if (process.argv[2]) await page.screenshot({ path: process.argv[2] });
+  ok(errors.length === 0, `no page errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
+  await browser.close();
+} catch (e) { ok(false, String(e)); }
+await new Promise(r => { server.once('exit', r); server.kill(); });
+fs.rmSync(data, { recursive: true, force: true });
+process.exit(failed ? 1 : 0);
