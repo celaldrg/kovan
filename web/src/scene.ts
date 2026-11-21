@@ -10,7 +10,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import type { Dept, Worker, Pulse } from './types';
 import { icon } from './icons';
 
-type WState = 'idle' | 'working' | 'approval';
+type WState = 'idle' | 'working' | 'approval' | 'stuck';
 interface Bee {
   w: Worker; rig: THREE.Group; body: THREE.Group; wings: THREE.Object3D[]; cellRing: THREE.Mesh; arc: THREE.Mesh; alert: THREE.Mesh;
   home: THREE.Vector3; state: WState; phase: number; flash: number; hoverK: number; lift: number;
@@ -74,6 +74,8 @@ export class Hive {
   onDeptClick: (id: string) => void = () => {};
   onReady: () => void = () => {};
   private floor!: THREE.InstancedMesh;
+  private pop: THREE.Object3D[] = [];
+  private popLabels: HTMLElement[] = [];
   private hemi!: THREE.HemisphereLight;
   private core = new THREE.Group();
   private gem!: THREE.Mesh;
@@ -222,13 +224,14 @@ export class Hive {
   private buildDepts(depts: Dept[], workers: Worker[]) {
     const dist = 9.2;
     depts.forEach((dept, i) => {
-      const a = (i / depts.length) * Math.PI * 2 - Math.PI / 2;
+      // Half a step off due-north so a zone sign does not sit under the metrics bar.
+      const a = (i / depts.length) * Math.PI * 2 - Math.PI / 2 + Math.PI / depts.length;
       const center = new THREE.Vector3(Math.cos(a) * dist, 0, Math.sin(a) * dist);
       this.deptCenters.set(dept.id, center);
       const color = new THREE.Color(dept.color);
       const team = workers.filter(w => w.dept === dept.id).sort((x, y) => Number(!!y.lead) - Number(!!x.lead));
-      const spots = [[0, 0], ...RING];
-      team.slice(0, 7).forEach((w, k) => this.addBee(w, center.clone().add(axial(spots[k][0], spots[k][1]).multiplyScalar(1.1)), color, dept.color, !!w.lead));
+      const spots: [number, number][] = [[0, 0], ...(RING as [number, number][]), ...RING.map(([q, r]) => [q * 2, r * 2] as [number, number])];
+      team.slice(0, spots.length).forEach((w, k) => this.addBee(w, center.clone().add(axial(spots[k][0], spots[k][1]).multiplyScalar(team.length > 7 ? 0.92 : 1.1)), color, dept.color, !!w.lead));
 
       // zone: a soft tinted floor plate with a glowing hex rim that brightens with workload
       const plateMat = new THREE.ShaderMaterial({
@@ -249,11 +252,11 @@ export class Hive {
       const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 1, 6), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
       const banner = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.bannerTexture(dept), transparent: true, depthWrite: false }));
       banner.center.set(0.5, 0); banner.scale.set(4.2, 1.05, 1); banner.renderOrder = 5;
-      banner.position.copy(center).setY(3.9);
-      mast.position.copy(banner.position).setY(2.3 + (3.9 - 2.3) / 2); mast.scale.y = 3.9 - 2.3;
-      this.scene.add(plate, rim, mast, banner);
+      banner.position.copy(center).setY(2.55);
+      mast.position.copy(banner.position).setY(1.7); mast.scale.y = 1.15;
+      this.own(plate); this.own(rim); this.own(mast); this.own(banner);
       // live status chip under the banner
-      const chip = this.addLabel(`<i></i><b data-zone-text>idle · ${team.length} agents</b>`, banner.position.clone().setY(3.55), 'lbl dept');
+      const chip = this.addLabel(`<i></i><b data-zone-text>idle · ${team.length}</b>`, banner.position.clone().setY(2.15), 'lbl dept', true);
       chip.style.setProperty('--c', dept.color);
       chip.title = `${dept.name} · ${dept.tr}`;
       chip.addEventListener('click', () => this.onDeptClick(dept.id));
@@ -263,7 +266,7 @@ export class Hive {
       const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.04, len), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.5 }));
       bridge.position.copy(center.clone().normalize().multiplyScalar(4.3 + len / 2)).setY(0.0);
       bridge.lookAt(center.x, 0.0, center.z);
-      this.scene.add(bridge);
+      this.own(bridge);
     });
     // fonts may still be loading on first paint: redraw the banners once they are in
     document.fonts?.ready.then(() => { for (const z of this.zones.values()) { const m = z.banner.material as THREE.SpriteMaterial; m.map?.dispose(); m.map = this.bannerTexture(z.dept); m.needsUpdate = true; } });
@@ -326,17 +329,17 @@ export class Hive {
     // cell
     const cell = new THREE.Mesh(new THREE.CylinderGeometry(HEX * 0.98, HEX * 1.0, 0.5, 6), new THREE.MeshStandardMaterial({ color: 0x1b1f27, roughness: 0.5, metalness: 0.35, emissive: color, emissiveIntensity: 0.04 }));
     cell.rotation.y = Math.PI / 6; cell.position.copy(home).setY(0.1); cell.receiveShadow = cell.castShadow = true; cell.name = 'cell';
-    this.scene.add(cell);
+    this.own(cell);
     const cellRing = new THREE.Mesh(new THREE.RingGeometry(0.86, 0.95, 6, 1), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }));
     cellRing.rotation.x = -Math.PI / 2; cellRing.rotation.z = Math.PI / 6; cellRing.position.copy(home).setY(0.36);
     const arc = new THREE.Mesh(new THREE.RingGeometry(0.6, 0.66, 48, 1, 0, Math.PI * 0.6), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
     arc.rotation.x = -Math.PI / 2; arc.position.copy(home).setY(0.37);
     const alert = new THREE.Mesh(new THREE.RingGeometry(0.98, 1.06, 6, 1), new THREE.MeshBasicMaterial({ color: 0x3ee6c8, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
     alert.rotation.x = -Math.PI / 2; alert.rotation.z = Math.PI / 6; alert.position.copy(home).setY(0.38);
-    this.scene.add(cellRing, arc, alert);
+    this.own(cellRing); this.own(arc); this.own(alert);
     if (lead) { // the department head stands on a gilded cell
       const gild = new THREE.Mesh(new THREE.RingGeometry(1.0, 1.08, 6, 1), new THREE.MeshBasicMaterial({ color: 0xffc85a, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false }));
-      gild.rotation.x = -Math.PI / 2; gild.rotation.z = Math.PI / 6; gild.position.copy(home).setY(0.37); this.scene.add(gild);
+      gild.rotation.x = -Math.PI / 2; gild.rotation.z = Math.PI / 6; gild.position.copy(home).setY(0.37); this.own(gild);
     }
 
     // bee
@@ -373,7 +376,7 @@ export class Hive {
     rig.position.copy(home).setY(0.9);
     rig.rotation.y = Math.atan2(-home.x, -home.z);
     rig.traverse(o => (o.userData.bee = w.id));
-    this.scene.add(rig);
+    this.own(rig);
     this.bees.set(w.id, { w, rig, body, wings, cellRing, arc, alert, home, state: 'idle', phase: Math.random() * 10, flash: 0, hoverK: 0, lift: 0.9 });
   }
 
@@ -398,11 +401,36 @@ export class Hive {
     this.scene.add(this.dust);
   }
 
-  private addLabel(html: string, pos: THREE.Vector3, cls: string) {
+  private own(obj: THREE.Object3D) { this.pop.push(obj); this.scene.add(obj); return obj; }
+  /** Drop department zones and bees so the live hive can change shape. The floor and core stay. */
+  syncPopulation(depts: Dept[], workers: Worker[]) {
+    for (const obj of this.pop) {
+      this.scene.remove(obj);
+      const mat = (obj as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+      const mats = !mat ? [] : Array.isArray(mat) ? mat : [mat];
+      for (const m of mats) {
+        const map = (m as THREE.MeshBasicMaterial).map;
+        if (map) map.dispose();
+        m.dispose();
+      }
+    }
+    this.pop = [];
+    for (const el of this.popLabels) el.remove();
+    this.labels = this.labels.filter(l => !this.popLabels.includes(l.el));
+    this.popLabels = [];
+    this.bees.clear(); this.zones.clear(); this.deptCenters.clear(); this.hovered = null;
+    this.buildDepts(depts, workers);
+  }
+  setCoreLabel(text: string) {
+    const el = this.overlay.querySelector('.lbl.core b');
+    if (el) el.textContent = text;
+  }
+  private addLabel(html: string, pos: THREE.Vector3, cls: string, owned = false) {
     const el = document.createElement('div');
     el.className = cls; el.innerHTML = html;
     this.overlay.appendChild(el);
     this.labels.push({ el, pos });
+    if (owned) this.popLabels.push(el);
     return el;
   }
 
@@ -419,7 +447,12 @@ export class Hive {
     this.scene.traverse(o => { if (o.name === 'cell') ((o as THREE.Mesh).material as THREE.MeshStandardMaterial).color.set(P.cell); });
   }
   setDim(on: boolean) { this.renderer.toneMappingExposure = on ? 0.6 : PALETTES[this.theme].exposure; this.bloom.strength = on ? 1.3 : PALETTES[this.theme].bloom; }
-  setStates(states: Record<string, WState>) { for (const [id, b] of this.bees) b.state = states[id] || 'idle'; }
+  setStates(states: Record<string, WState>) {
+    for (const [id, b] of this.bees) {
+      b.state = states[id] || 'idle';
+      (b.alert.material as THREE.MeshBasicMaterial).color.set(b.state === 'stuck' ? 0xff6b6b : 0x3ee6c8);
+    }
+  }
   /** Send a radial shock-wave across the floor (e.g. when a task lands). */
   ripple() { this.uniforms.uWave.value = 0.01; }
 
@@ -462,12 +495,13 @@ export class Hive {
     this.camGoal = { pos: c.clone().sub(dir.clone().multiplyScalar(7.6)).add(side).setY(8.6), target: c.clone().add(dir.multiplyScalar(0.4)).setY(2.0) };
   }
   /** Live workload per department: drives the zone glow and the status chip. */
-  setDeptLoad(id: string, info: { working: number; queued: number; approval: number; size: number }) {
+  setDeptLoad(id: string, info: { working: number; queued: number; approval: number; size: number; stuck?: number }) {
     const z = this.zones.get(id); if (!z) return;
-    z.target = Math.min(1, (info.working + info.approval * 0.5) / Math.max(1, info.size) * 1.4 + Math.min(info.queued, 3) * 0.05);
-    const txt = info.working || info.queued || info.approval
-      ? [info.working ? `${info.working} working` : '', info.queued ? `${info.queued} queued` : '', info.approval ? `${info.approval} needs OK` : ''].filter(Boolean).join(' · ')
-      : `idle · ${info.size} agents`;
+    const stuck = info.stuck || 0;
+    z.target = Math.min(1, (info.working + info.approval * 0.5 + stuck * 0.4) / Math.max(1, info.size) * 1.4 + Math.min(info.queued, 3) * 0.05);
+    const txt = info.working || info.queued || info.approval || stuck
+      ? [info.working ? `${info.working} working` : '', stuck ? `${stuck} stuck` : '', info.queued ? `${info.queued} queued` : '', info.approval ? `${info.approval} needs you` : ''].filter(Boolean).join(' · ')
+      : `idle · ${info.size}`;
     const b = z.chip.querySelector('[data-zone-text]')!; if (b.textContent !== txt) b.textContent = txt;
     z.chip.classList.toggle('busy', info.working > 0); z.chip.classList.toggle('waiting', info.approval > 0);
   }
@@ -541,10 +575,10 @@ export class Hive {
 
     // bees
     for (const b of this.bees.values()) {
-      const working = b.state === 'working', waiting = b.state === 'approval';
+      const working = b.state === 'working', waiting = b.state === 'approval', stuck = b.state === 'stuck';
       b.hoverK += ((this.hovered === b ? 1 : 0) - b.hoverK) * Math.min(1, dt * 10);
       b.flash = Math.max(0, b.flash - dt * 1.2);
-      const targetLift = waiting ? 1.75 : working ? 1.25 : 0.95;
+      const targetLift = waiting ? 1.75 : stuck ? 0.7 : working ? 1.25 : 0.95;
       b.lift += (targetLift - b.lift) * Math.min(1, dt * 3);
       let x = b.home.x, z = b.home.z, y = b.lift + Math.sin(t * 2.2 + b.phase) * 0.06;
       let yaw = Math.atan2(-b.home.x, -b.home.z), pitch = 0, roll = 0;
@@ -555,6 +589,8 @@ export class Hive {
       } else if (waiting) {
         y += Math.abs(Math.sin(t * 3.2 + b.phase)) * 0.18; pitch = -0.25;
         yaw += Math.sin(t * 2 + b.phase) * 0.35;
+      } else if (stuck) {
+        pitch = 0.35; roll = Math.sin(t * 1.4 + b.phase) * 0.2;
       } else {
         x += Math.sin(t * 0.7 + b.phase) * 0.06; z += Math.cos(t * 0.6 + b.phase) * 0.06;
         yaw += Math.sin(t * 0.5 + b.phase) * 0.25;
@@ -577,8 +613,8 @@ export class Hive {
       arcMat.opacity += ((working ? 0.9 : 0) - arcMat.opacity) * Math.min(1, dt * 5);
       b.arc.rotation.z = -t * 3 + b.phase;
       const al = b.alert.material as THREE.MeshBasicMaterial;
-      al.opacity = waiting ? 0.35 + Math.sin(t * 5) * 0.35 : 0;
-      b.alert.scale.setScalar(waiting ? 1 + ((t * 0.9) % 1) * 0.35 : 1);
+      al.opacity = waiting ? 0.35 + Math.sin(t * 5) * 0.35 : stuck ? 0.3 + Math.sin(t * 3) * 0.25 : 0;
+      b.alert.scale.setScalar(waiting || stuck ? 1 + ((t * (waiting ? 0.9 : 0.45)) % 1) * 0.35 : 1);
     }
 
     // department zones
@@ -587,10 +623,24 @@ export class Hive {
       const focus = this.focusedDept === z.dept.id ? 1 : 0;
       (z.plate.material as THREE.ShaderMaterial).uniforms.uLoad.value = z.load + focus * 0.35;
       (z.rim.material as THREE.MeshBasicMaterial).opacity = 0.22 + z.load * 0.55 + focus * 0.25 + Math.sin(t * 2 + z.seed) * 0.04;
-      z.banner.position.y = 3.9 + Math.sin(t * 0.9 + z.seed) * 0.08;
-      // keep signs readable: far ones grow a little, near ones shrink (clamped)
-      const k = THREE.MathUtils.clamp(this.camera.position.distanceTo(z.banner.position) / 23, 0.5, 1.55);
-      z.banner.scale.set(4.2 * k, 1.05 * k, 1);
+      z.banner.position.y = 2.55 + Math.sin(t * 0.9 + z.seed) * 0.06;
+      // Far signs used to grow until they covered the metrics bar. Keep them modest.
+      const k = THREE.MathUtils.clamp(this.camera.position.distanceTo(z.banner.position) / 28, 0.78, 1.05);
+      z.banner.scale.set(3.35 * k, 0.84 * k, 1);
+      // The sign's anchor is its bottom edge. Drop it until that top clears the HUD.
+      const top = z.banner.position.clone();
+      top.y += z.banner.scale.y;
+      for (let n = 0; n < 8; n++) {
+        const sp = this.project(top);
+        if (sp.behind || sp.y >= 168) break;
+        z.banner.position.y -= 0.22;
+        top.y -= 0.22;
+      }
+      const h = Math.max(0.45, z.banner.position.y - 1.35);
+      z.mast.scale.y = h;
+      z.mast.position.set(z.center.x, 1.35 + h / 2, z.center.z);
+      const chipLabel = this.labels.find(l => l.el === z.chip);
+      if (chipLabel) chipLabel.pos.set(z.center.x, Math.max(1.15, z.banner.position.y - 0.42), z.center.z);
       (z.mast.material as THREE.MeshBasicMaterial).opacity = 0.25 + z.load * 0.5;
     }
 

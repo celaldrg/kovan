@@ -1,7 +1,7 @@
 {
   "name": "kovan",
   "version": "0.1.0",
-  "description": "Kovan — a living 3D honeycomb where AI departments of worker bees take tasks, read your notes and file results back. Runs locally on your own AI CLI.",
+  "description": "Kovan — all your Claude Code and Codex sessions in one live 3D hive. See who's working, who's stuck and who needs you, and approve without hunting through terminal tabs.",
   "type": "module",
   "author": "Celalettin Durğaç (https://celaldrg.github.io)",
   "license": "MIT",
@@ -9,6 +9,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/celaldrg/kovan.git"
+  },
+  "bin": {
+    "kovan": "./bin/kovan.mjs"
   },
   "bugs": {
     "url": "https://github.com/celaldrg/kovan/issues"
@@ -32,10 +35,10 @@
     "build": "tsc -p . && vite build",
     "prestart": "node -e \"process.exit(require('fs').existsSync('dist/index.html')?0:1)\" || npm run build",
     "start": "node server/index.mjs",
-    "demo": "KOVAN_DEMO=1 node server/index.mjs",
+    "demo": "cross-env KOVAN_DEMO=1 node server/index.mjs",
     "smoke": "node scripts/smoke.mjs",
     "shots": "node scripts/shots.mjs",
-    "test": "node --test shared/*.test.js"
+    "test": "node scripts/test.mjs"
   },
   "devDependencies": {
     "@fontsource/inter": "^5.3.0",
@@ -43,6 +46,7 @@
     "@fontsource/space-grotesk": "^5.3.0",
     "@types/three": "^0.170.0",
     "concurrently": "^9.1.0",
+    "cross-env": "^7.0.3",
     "lucide": "^1.77.0",
     "puppeteer-core": "^23.0.0",
     "three": "^0.170.0",
