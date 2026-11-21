@@ -9,7 +9,8 @@ const readJson = (p, fallback) => { try { return JSON.parse(fs.readFileSync(p, '
 export function loadConfig() {
   const base = readJson(path.join(ROOT, 'kovan.config.json'), {});
   const local = readJson(path.join(ROOT, 'kovan.config.local.json'), {});
-  const cfg = { name: 'My Hive', vault: './vault', port: 4700, model: 'sonnet', effort: '', connectors: { allow: [], deny: [] }, swarm: { enabled: true, max: 3 }, ...base, ...local };
+  const cfg = { name: 'Kovan', vault: './vault', port: 4700, model: 'sonnet', effort: '', mode: 'live', connectors: { allow: [], deny: [] }, swarm: { enabled: true, max: 3 }, modelIds: {}, ...base, ...local };
+  if (process.env.KOVAN_MODE === 'company' || process.env.KOVAN_MODE === 'live') cfg.mode = process.env.KOVAN_MODE;
   if (process.env.KOVAN_PORT) cfg.port = Number(process.env.KOVAN_PORT);
   if (process.env.KOVAN_VAULT) cfg.vault = process.env.KOVAN_VAULT;
   cfg.vaultDir = path.resolve(ROOT, cfg.vault);

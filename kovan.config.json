@@ -1,9 +1,16 @@
 {
-  "name": "Tessellane Labs",
+  "name": "Kovan",
+  "mode": "live",
   "vault": "./vault",
   "port": 4700,
   "model": "sonnet",
   "effort": "",
+  "models": ["sonnet", "opus", "haiku"],
+  "modelIds": {
+    "sonnet": "claude-sonnet-4-5",
+    "opus": "claude-opus-4-1",
+    "haiku": "claude-haiku-4-5"
+  },
   "connectors": { "allow": [], "deny": [] },
   "swarm": { "enabled": true, "max": 3 }
 }

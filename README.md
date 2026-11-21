@@ -3,14 +3,14 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="assets/banner-light.svg">
-  <img alt="Kovan: an AI operations command center, six departments of AI agents in a living 3D honeycomb" src="assets/banner-dark.svg" width="100%">
+  <img alt="Kovan: a live 3D hive of coding-agent sessions" src="assets/banner-dark.svg" width="100%">
 </picture>
 
 # ⬡ Kovan
 
-**An AI operations command center: a team of AI agents across six departments takes your tasks, reads your knowledge base and files the results back, all in one living 3D view.**
+**All your Claude Code and Codex sessions in one live 3D hive.** See who's working, who's stuck and who needs you, and approve without hunting through terminal tabs.
 
-Local-first · runs on your own Claude Code login (or an API key) · works offline in demo mode
+Local-first · one command to attach hooks · demo runs with zero setup
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-f5a524.svg)](LICENSE)
 ![Node 20+](https://img.shields.io/badge/node-%3E%3D20-2dd4bf)
@@ -20,184 +20,161 @@ Local-first · runs on your own Claude Code login (or an API key) · works offli
 
 ---
 
+You have four Claude Code sessions open, and one of them has been sitting on a permission prompt for ten minutes. The terminal tabs all look the same. Kovan puts every session on one hive: a bee per session, a zone per project, and a card the moment something is waiting on you.
+
 ## Demo
 
 <p align="center">
-  <img src="assets/kovan-demo.gif" alt="Kovan demo: the launch splash, a fly-through of the departments, the Agents view and a task routed to Engineering" width="100%">
+  <img src="assets/kovan-demo.gif" alt="Kovan live hive: project zones, bees working, and an approval card for an edit" width="100%">
 </p>
 
 <p align="center">
-  🎬 <a href="assets/kovan-demo.mp4"><b>Watch the full demo (MP4)</b></a> (20 s, 1280×720): launch splash, a fly-through of the departments, the Agents and Departments views, a task routed with <code>@engineering</code>, then the Knowledge Vault graph and the Board.<br>
-  <sub>Recorded offline with <code>npm run demo</code>: a demo autopilot keeps the agents busy without any AI login. The company, people and data are fictional.</sub>
+  <a href="assets/kovan-demo.mp4"><b>Watch the demo (MP4)</b></a>
+  <br>
+  <sub>Recorded from <code>npm run demo</code>. The projects (lighthouse-api, northwind-web, paperkite-cli) are fictional.</sub>
 </p>
 
 <table>
   <tr>
-    <td colspan="2"><img src="assets/screenshot-hive.png" alt="Overview: six department zones around the Knowledge Vault core, the live metrics bar and the activity timeline"></td>
+    <td colspan="2"><img src="assets/screenshot-hive.png" alt="Live hive: three project zones, bees working, stuck and waiting, and a Needs you card"></td>
   </tr>
   <tr>
-    <td colspan="2" align="center"><sub><b>Overview</b>: live metrics (in flight, completed today, latency, tokens and cost, success rate), the activity timeline and six department zones around the Knowledge Vault</sub></td>
+    <td colspan="2" align="center"><sub><b>Live hive</b>: one zone per project, one bee per session. Working, stuck, idle, and waiting are different.</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="assets/screenshot-agents.png" alt="Agents view: a status card per agent with model, effort, current task, completed runs, latency and tokens"></td>
-    <td width="50%"><img src="assets/screenshot-departments.png" alt="Departments view: a card per department with its head, team, counts and recent output"></td>
+    <td width="50%"><img src="assets/screenshot-approval.png" alt="Approval card showing an Edit diff with Allow, Deny and Always allow"></td>
+    <td width="50%"><img src="assets/screenshot-sessions.png" alt="Sessions view grouped by project, with needs-you, working and idle states"></td>
   </tr>
   <tr>
-    <td align="center"><sub><b>Agents</b> (<code>A</code>): status, model and effort, last task, latency and tokens for every agent</sub></td>
-    <td align="center"><sub><b>Departments</b> (<code>D</code>): heads, teams, counts and recent output</sub></td>
+    <td align="center"><sub><b>Needs you</b>: tool, command and diff. Allow, Deny, or Always allow.</sub></td>
+    <td align="center"><sub><b>Sessions</b> (<code>A</code>): every bee, grouped by project.</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="assets/screenshot-department-focus.png" alt="The camera flown into the Content and Marketing department, with its focus card"></td>
-    <td width="50%"><img src="assets/screenshot-board.png" alt="Board: a Kanban of every task from Scheduled to Done"></td>
+    <td colspan="2"><img src="assets/screenshot-company.png" alt="Company mode: the original six-department hive, still available"></td>
   </tr>
   <tr>
-    <td align="center"><sub><b>Fly to a department</b> (<code>1</code>–<code>6</code>): its zone, its agents and its focus card</sub></td>
-    <td align="center"><sub><b>Board</b> (<code>B</code>): Scheduled → Queued → Working → Needs OK → Done</sub></td>
+    <td colspan="2" align="center"><sub><b>Company mode</b> is still there: departments, swarm, vault, board and routines. The live hive is the default.</sub></td>
   </tr>
 </table>
 
 ---
 
-## What is it?
-
-Kovan (Turkish for *beehive*) is a command center for a team of AI agents. Each agent is drawn as a bee in
-one of six departments around a glowing **Knowledge Vault**, a plain Markdown notes folder that belongs to you. Type a task in
-plain words; Kovan routes it to the best-fit agent, the agent reads the relevant notes, does the work and files a
-dated deliverable back into your vault. A live metrics bar shows tasks in flight, completions, latency, token spend and
-success rate, and every run lands on an activity timeline. Everything runs on your machine.
-
-## Features
-
-| | |
-|---|---|
-| 🏢 **Departments** | Six first-class departments, each with its own zone, colour, floating sign, department head and team: **Research** (Araştırma) · **Content & Marketing** (İçerik & Pazarlama) · **Design** (Tasarım) · **Engineering** (Mühendislik) · **Support & Ops** (Destek & Operasyon) · **Finance** (Finans). Zones glow with live workload. The **Departments** view (`D`) shows each department's head, members, active / queued / needs-OK / done counts and recent output; *Fly to department* zooms the camera in. |
-| 📈 **Live metrics** | A metrics bar for the whole workforce: tasks in flight, completed today, average and p95 latency, tokens with an estimated cost, and success rate with approvals pending. |
-| 🧑‍💼 **Agents view** | `A` opens a card for every agent: status, current or last task, model and effort, completed runs, average latency and tokens. Click a card to open a direct line to that agent. |
-| 🕒 **Activity timeline** | Every task on one timeline with its agent, department, model, latency and tokens. Filter by in flight, needs approval, scheduled or completed. |
-| 🐝 **3D hive** | Animated hex floor, 27 AI agents, drawn as bees, in six department zones around the Knowledge Vault core. Agents idle, buzz when working and hover with a pulsing ring when they need your OK. Notes orbit the Vault core. |
-| ✨ **Live data flights** | Every note read flies Vault → agent (teal), every deliverable flies agent → Vault (amber), swarm hand-offs fly agent → agent (pink). Streamed over SSE, no polling. |
-| ⌨️ **Command bar** | One line. Pick a department from the picker (or press `Tab` to cycle), start with `@design …` / `finans: …`, or leave it on auto-route — the hint shows where the task will land before you send it. Model + effort, auto-growing input. A live hint reads back any schedule it detects and warns when a task has an outbound step. |
-| 🧭 **Smart routing** | Claude picks the best-fit agent from roles and skills; offline, a local keyword scorer does it. |
-| ⬡ **Swarm mode** | Press *Swarm* or start with `as a team, …` — the department head splits the job into parallel pieces, teammates work at the same time, the lead merges a final with credits. |
-| ✋ **Needs-your-OK** | Anything that would send, post, pay or delete is prepared but held. **Approve** executes it; **Rework** sends it back with your reason (and remembers it). |
-| 💬 **Direct line to any agent** | Click an agent to talk to it. It answers in character, using what your notes say; start a message with `revise:` to have its last deliverable redone. |
-| 🧠 **Learns from corrections** | Each revision is saved to `vault/Kovan/lessons/<agent>.md`; “always / never / from now on” corrections become standing rules that join every future prompt. Plain Markdown — edit or delete lines freely. |
-| 📚 **Skills & briefs** | Drop a `SKILL.md` into `vault/Kovan/skills/<name>/` and bind it to agents or departments (`departments: [design]`); add a `brief` to any agent. Re-read before every run, no restart. |
-| ↻ **Routines** | `every weekday at 9am triage new support tickets`, `every 2 hours …`, `her gün saat 9 …` (Turkish works too). The clock lives in the server; missed runs catch up once and are marked *late*. Run now / pause / delete. |
-| 📅 **Calendar** | Month grid showing what got done, what is booked, and upcoming routine runs drawn as dashed chips. Click a day to schedule a one-off or a repeating task. |
-| 🗂 **Board** | Kanban of every task across the company: Scheduled → Queued → Working → Needs OK → Done. |
-| 🕸 **Knowledge Vault graph** | Your notes as a force-directed hex graph. Hover for links, click to read the note and see which agents read or wrote it. |
-| 🔌 **Links** | Lists the MCP servers registered with your Claude Code CLI as hex chips; filter them with allow/deny in config. |
-| 📊 **Usage meter** | Token totals for the last 5 h and 7 days, read **locally** from Claude Code's own session logs — no credentials are touched. |
-| 🌗 **Themes** | Calm graphite dark and clean light themes, plus a dimmed focus mode. |
-
-## Quick start
+## Install
 
 ```bash
 git clone https://github.com/celaldrg/kovan.git
 cd kovan
 npm install
-npm start            # builds once, then → http://localhost:4700
+npm start            # builds once, then http://localhost:4700
 ```
 
-- **Live mode:** install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and log in, or export `ANTHROPIC_API_KEY`. The badge turns teal: **ONLINE**.
-- **Demo mode:** with neither, Kovan runs with simulated work so you can explore everything. Force it with `npm run demo`. In demo mode an autopilot keeps the hive busy with a steady flow of sample tasks (great for screen recordings); turn it off with `KOVAN_AUTOPILOT=0`.
+Attach Kovan to Claude Code once:
 
-### Scripts
+```bash
+npx kovan hooks install
+```
+
+That merges HTTP hooks into your Claude Code user settings and writes a timestamped backup next to the file. Your existing hooks stay. `npx kovan hooks uninstall` removes only Kovan's entries.
+
+Then start a Claude Code session. Each project you work in becomes a zone, and each session becomes a bee. State comes from Claude Code hook events: `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, `Notification`, `SubagentStart`, `SubagentStop`, `Stop`, `StopFailure`, and `SessionEnd`.
+
+`SessionStart` cannot be an HTTP hook in Claude Code (only command and MCP hooks run for that event), so the installer registers a small command that forwards the same JSON to Kovan. If Kovan is not running, that command exits quietly.
+
+### Approve from the hive
+
+A `PermissionRequest` turns the bee into a card: tool, command, and a diff for edits. **Allow** grants it once. **Deny** sends a denial back to Claude. **Always allow** echoes Claude's own allow suggestion when it sent one, otherwise a session-scoped allow rule.
+
+The **Needs you** queue is sorted by how long the prompt has been waiting. A new card plays a short chime. Turn on browser notifications with **Alerts** on the card.
+
+Fail-safe: Kovan never auto-allows. The hook is installed without `onFailure: "block"`. If Kovan is stopped, the request fails to connect, or the wait times out, Claude Code falls back to its normal terminal prompt.
+
+### No hooks yet
+
+If the hooks are not installed, Kovan tails Claude Code session logs under the Claude config directory and, when present, Codex rollout logs. That view is inferred from the transcript, not exact. A session that has reported a hook is never overwritten by the log. Demo mode does not read those logs.
+
+Codex has no equivalent HTTP hook in this release. Codex sessions appear only from the log tail, and only when the lines match the rollout shape Kovan knows.
+
+### Demo, zero setup
+
+```bash
+npm run demo         # http://localhost:4700  (cross-env, so this works on Windows)
+```
+
+Demo mode invents three fictional projects and drives them with the same hook payloads a real session would send, including one permission card that waits until you answer it. Company mode is one click away.
+
+## Company mode
+
+The original hive is still in the app: six departments, swarm tasks, the knowledge vault, the board, the calendar and routines. Open it with **Company** in the header (or set `"mode": "company"` in `kovan.config.json`). `npm run demo` keeps that mode working, with simulated runs when Claude Code is not logged in.
+
+## Scripts
 
 | Command | Does |
 |---|---|
-| `npm start` | Build if needed and start the server |
-| `npm run dev` | API + Vite dev server with hot reload (http://localhost:5180) |
-| `npm run build` | Type-check and build the web app into `dist/` |
-| `npm run demo` | Start in demo mode |
-| `npm test` | Unit tests for the schedule parser |
-| `npm run smoke` | Headless browser smoke test (needs Chrome/Chromium) |
-| `npm run shots -- <dir>` | Capture 1920×1080 screenshots of every screen (needs Chrome/Chromium) |
+| `npm start` | Build if needed, then serve http://localhost:4700 |
+| `npm run dev` | API + Vite (http://localhost:5180) |
+| `npm run demo` | Live hive with simulated sessions, no Claude login |
+| `npm test` | Hook parsing, permission round-trip, settings merge, usage, schedules |
+| `npm run build` | Type-check and build the web app |
+| `npx kovan hooks install` | Merge Kovan's hooks into Claude Code settings |
+| `npx kovan hooks uninstall` | Remove Kovan's hooks, leave yours |
 
-### Keyboard
+`--settings <file>` and `--port <n>` override the settings path and the hook URL. The default file is `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`).
+
+## Keyboard
 
 | Key | Action |
 |---|---|
-| `/` | Focus the command bar |
-| `1`–`6` / `0` | Fly to a department / back to overview |
-| `A` | Agents view |
-| `D` | Departments view |
-| `Tab` (in the command bar) | Cycle the target department |
-| `V` | Knowledge Vault graph |
-| `K` | Calendar |
-| `B` | Board |
-| `T` | Toggle theme |
-| `F` | Focus mode |
-| `Esc` | Close / back |
+| `A` | Sessions (live) or Agents (company) |
+| `1`–`9` / `0` | Fly to a zone / back to the overview |
+| `D` `V` `K` `B` | Departments, vault, calendar, board (company mode) |
+| `T` / `F` | Theme / focus |
+| `Esc` | Close |
 
-## Make it yours
+## Config
 
-**`kovan.config.json`**
+`kovan.config.json` (overrides in `kovan.config.local.json`, git-ignored):
 
 ```json
 {
-  "name": "Tessellane Labs",
-  "vault": "./vault",
+  "name": "Kovan",
+  "mode": "live",
   "port": 4700,
   "model": "sonnet",
-  "connectors": { "allow": [], "deny": [] },
-  "swarm": { "enabled": true, "max": 3 }
+  "models": ["sonnet", "opus", "haiku"],
+  "modelIds": {
+    "sonnet": "claude-sonnet-4-5",
+    "opus": "claude-opus-4-1",
+    "haiku": "claude-haiku-4-5"
+  }
 }
 ```
 
-- `vault` — point it at any directory of `.md` files; `[[double-bracket]]` links become graph edges, so an Obsidian vault drops right in. The bundled sample is a fictional B2B software company (Tessellane Labs) with a product, customers, a launch playbook, runbooks and a monthly close.
-- Private overrides go in `kovan.config.local.json` (git-ignored).
+`modelIds` is what company-mode API runs send. Override one alias with `KOVAN_MODEL_SONNET`, `KOVAN_MODEL_OPUS`, or `KOVAN_MODEL_HAIKU`, or override the selected model with `KOVAN_MODEL_ID`. The usage meter counts `input_tokens`, `output_tokens`, `cache_creation_input_tokens`, and `cache_read_input_tokens`.
 
-**`crew.json`** — `departments` (`id`, `name`, `tr`, `code`, `color`, `icon` (a Lucide name), `mission`) and `workers` (`id`, `dept`, `lead` for the department head, `name`, `role`, `does`, `skills`, optional `brief`, `model`, `effort`). Override per agent in `crew.local.json`.
-
-**Skills** — `vault/Kovan/skills/<name>/SKILL.md`:
-
-```markdown
----
-name: launch-post
-about: How a product launch post is written
-workers: [atlas, zeyno]
----
-# Writing a launch post
-1. Lead with the customer problem the release solves. …
-```
-
-## How it works
+## How the hive is wired
 
 ```
-web/  (Vite + TypeScript + three.js)          server/  (Node, zero runtime deps)
- ├─ scene.ts     hex floor, bees, bloom, intro ├─ index.mjs      HTTP API + SSE + static files
- ├─ main.ts      UI, command bar, chat         ├─ hive.mjs       routing, jobs, swarms, approvals, routines
- ├─ graph.ts     vault force graph             ├─ ai.mjs         Claude Code CLI · Messages API · demo writer
- ├─ calendar.ts  month view + planner          ├─ vault.mjs      Markdown graph, relevance, deliverables
- └─ board.ts     kanban                        ├─ knowledge.mjs  skills + lessons
-shared/  (used by both sides)                  ├─ connectors.mjs MCP link discovery
- ├─ schedule.js     plain-language schedules   ├─ usage.mjs      local token meter
- └─ departments.js  @department, auto-guess    └─ autopilot.mjs  lively demo task flow
+Claude Code  --HTTP POST-->  /api/hooks  -->  live session store  --SSE-->  3D hive
+                     |
+                     +-- PermissionRequest is held until Allow / Deny / Always
+                         or until the wait ends with an empty body (terminal prompt)
 ```
 
-**Ground rule in every prompt:** looking things up is always fine; anything that leaves your
-machine (emails, posts, payments, deletions) happens only when you spelled out that step, and such
-tasks are parked for your approval first. Agents never get shell or file-editing tools.
-
-**Privacy:** notes are read from disk and only the few most relevant ones are sent as context for
-the task at hand. Tasks, routines and chats are stored in `data/` as JSON. No other data is sent anywhere.
+Company mode still runs through `server/hive.mjs` (routing, swarms, approvals, routines) and the vault under `vault/`. Nothing about a live session is written into the vault.
 
 ---
 
-## 🇹🇷 Türkçe özet
+## Türkçe özet
 
-**Kovan**, yapay zekâ ajanlarından oluşan bir ekibi tek bir canlı 3B görünümde yöneten, tamamen
-yerelde çalışan bir **AI operasyon merkezidir**. Ajanlar altı departmana dağılmış arılar olarak görünür; ortadaki
-**Knowledge Vault** senin Markdown not klasörün. Görevi düz bir cümleyle yazarsın; Kovan en uygun ajanı seçer,
-ajan ilgili notları okur, işi yapar ve sonucu tarihli bir not olarak klasörüne kaydeder. Üstteki metrik çubuğu
-süren görevleri, bugün bitenleri, ortalama süreyi, token/maliyet tahminini ve başarı oranını canlı gösterir.
+**Kovan**, açık olan Claude Code ve Codex oturumlarını tek bir canlı 3B kovanda gösterir. Her oturum bir arı, her proje bir bölgedir. Biri izin bekliyorsa kartta araç, komut ve diff görünür; Allow, Deny veya Always allow ile yanıtlarsınız. Kovan kapalıysa ya da süre dolarsa Claude Code kendi terminal sorusuna döner, kendiliğinden izin vermez.
 
-- **Kurulum:** `npm install && npm start` → http://localhost:4700
-- **Canlı mod:** Claude Code kurulu ve giriş yapılmışsa ya da `ANTHROPIC_API_KEY` tanımlıysa gerçek işler yapılır; yoksa demo modunda çalışır.
-- **Departmanlar:** Araştırma, İçerik & Pazarlama, Tasarım, Mühendislik, Destek & Operasyon ve Finans. Her departmanın 3B sahnede kendi bölgesi, rengi, yüzen tabelası, departman başkanı ve ekibi var; iş yükü canlı görünür. `D` tuşu departman kartlarını açar, *Fly to department* kamerayı o departmana götürür. Görevi komut çubuğundan bir departmana gönderebilir ya da `@tasarım …` diye başlayabilirsin.
-- **Öne çıkanlar:** `A` ile ajan kartları (model, effort, süre, token), aktivite zaman çizelgesi, ekip (swarm) modu, gönderme/ödeme gibi işler için onay adımı, düzeltmelerden öğrenme, Türkçe zamanlama (`her gün saat 9 …`, `hafta içi …`), takvim, pano ve not grafiği. Demo modunda otomatik pilot kovanı sürekli meşgul tutar (`KOVAN_AUTOPILOT=0` ile kapatılır).
+```bash
+npm install && npm start
+npx kovan hooks install
+npm run demo
+```
+
+Departmanlı şirket görünümü duruyor: üstteki **Company**.
 
 ---
 

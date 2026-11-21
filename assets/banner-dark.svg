@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-label="Kovan: an AI operations command center for a team of AI agents">
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-label="Kovan: a live 3D hive of your Claude Code and Codex sessions">
 <defs>
 <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0a0c10"/><stop offset="1" stop-color="#141923"/></linearGradient>
 <radialGradient id="core" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#f5b13d" stop-opacity="0.6"/><stop offset="1" stop-color="#f5b13d" stop-opacity="0"/></radialGradient>
@@ -526,8 +526,8 @@
 <circle cx="32" cy="20.5" r="4.6" fill="url(#mdarkg)"/><rect x="26.5" y="25.5" width="11" height="24" rx="5.5" fill="url(#mdarkg)"/>
 <path d="M27 33h10M27 39.5h10" stroke="#1A120A" stroke-width="2.3" stroke-linecap="round"/></g>
 <text x="162" y="160" font-family="'Inter', ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="72" font-weight="800" letter-spacing="-1" fill="#eef2f7">kovan</text>
-<text x="74" y="224" font-family="'Inter', ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="27" font-weight="650" fill="#c9d1dd">The AI operations command center.</text>
-<text x="74" y="260" font-family="'Inter', ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18.5" fill="#8b95a6">AI agents in six departments take tasks, read your notes, file results.</text>
+<text x="74" y="224" font-family="'Inter', ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="27" font-weight="650" fill="#c9d1dd">All your coding agents, one live hive.</text>
+<text x="74" y="260" font-family="'Inter', ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18.5" fill="#8b95a6">See who is working, who is stuck, and who needs you.</text>
 <rect x="74" y="296" width="103" height="30" rx="15" fill="#11151c" stroke="#2a313d"/><text x="87" y="316" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" fill="#f5b13d">AI agents</text>
 <rect x="187.39999999999998" y="296" width="129" height="30" rx="15" fill="#11151c" stroke="#2a313d"/><text x="200.39999999999998" y="316" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" fill="#f5b13d">live metrics</text>
 <rect x="326.59999999999997" y="296" width="121" height="30" rx="15" fill="#11151c" stroke="#2a313d"/><text x="339.59999999999997" y="316" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" fill="#f5b13d">local-first</text>

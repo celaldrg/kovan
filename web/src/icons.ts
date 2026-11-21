@@ -4,10 +4,11 @@ import {
   Play, Pause, Trash2, Clock, Repeat, Activity, BookOpen, Plug, CircleCheck, Hand, Zap, Search, ChevronLeft, ChevronRight, Bot,
   Layers, Send, MessageSquare, Wand2,
   Telescope, Megaphone, PenTool, CodeXml, LifeBuoy, Landmark, Building2, Crown, ArrowUpRight, ChevronDown, Inbox, LocateFixed, Loader, Timer, Coins, ShieldCheck,
+  Folder, Bell,
 } from 'lucide';
 
 type IconNode = [string, Record<string, string | number>][];
-const ICONS = { Hexagon, Network, CalendarDays, KanbanSquare, SunMoon, Focus, ArrowUp, Sparkles, Users, Cpu, Gauge, Check, RotateCcw, X, Play, Pause, Trash2, Clock, Repeat, Activity, BookOpen, Plug, CircleCheck, Hand, Zap, Search, ChevronLeft, ChevronRight, Bot, Layers, Send, MessageSquare, Wand2, Telescope, Megaphone, PenTool, CodeXml, LifeBuoy, Landmark, Building2, Crown, ArrowUpRight, ChevronDown, Inbox, LocateFixed, Loader, Timer, Coins, ShieldCheck } as unknown as Record<string, IconNode>;
+const ICONS = { Hexagon, Network, CalendarDays, KanbanSquare, SunMoon, Focus, ArrowUp, Sparkles, Users, Cpu, Gauge, Check, RotateCcw, X, Play, Pause, Trash2, Clock, Repeat, Activity, BookOpen, Plug, CircleCheck, Hand, Zap, Search, ChevronLeft, ChevronRight, Bot, Layers, Send, MessageSquare, Wand2, Telescope, Megaphone, PenTool, CodeXml, LifeBuoy, Landmark, Building2, Crown, ArrowUpRight, ChevronDown, Inbox, LocateFixed, Loader, Timer, Coins, ShieldCheck, Folder, Bell } as unknown as Record<string, IconNode>;
 export type IconName = keyof typeof ICONS;
 
 export function icon(name: string, size = 16, stroke = 1.75): string {

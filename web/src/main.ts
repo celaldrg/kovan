@@ -21,14 +21,15 @@ import { icon } from './icons';
 import { mark, wordmark } from './brand';
 import { parseSchedule, describeRule, isOutbound, detectSwarm } from '../../shared/schedule.js';
 import { pickDepartment, guessDepartment } from '../../shared/departments.js';
-import type { State, Job, ChatMsg, Pulse, Routine, Dept } from './types';
+import { liveCrew, paintQueue, paintPermit, paintSessions, noteNewPermits, permitCard } from './live-view';
+import type { State, Job, ChatMsg, Pulse, Routine, Dept, LiveSnap } from './types';
 
 const app = document.getElementById('app')!;
 app.innerHTML = `
   <div class="splash" id="splash"><div class="splash-grid"></div><div class="splash-in">
     <div class="sp-brand">${mark(44, 'sp')}<div class="splash-word">${wordmark()}</div><span class="sp-ver">v0.1</span></div>
-    <div class="sp-kicker">AI operations command center</div>
-    <h1 class="sp-title">Your AI workforce,<br><em>in one living view.</em></h1>
+    <div class="sp-kicker">Live hive for coding agents</div>
+    <h1 class="sp-title">Every session,<br><em>in one living hive.</em></h1>
     <ul class="sp-steps" id="spSteps"><li style="--i:0"><i></i><span>Indexing the knowledge vault</span></li><li style="--i:1"><i></i><span>Bringing agents online</span></li><li style="--i:2"><i></i><span>Routing engine ready</span></li></ul>
     <div class="splash-bar"><i></i></div>
   </div></div>
@@ -45,23 +46,24 @@ app.innerHTML = `
       <button data-view="board">${icon('KanbanSquare', 15)}<span>Board</span><kbd>B</kbd></button>
     </nav>
     <div class="right">
+      <button class="modebtn" id="modeBtn" type="button" title="Switch between the live hive and company mode">Company</button>
       <div class="meter" id="meter" title="Token usage">${icon('Gauge', 15)}<div><b id="m5">0</b><small>5h</small></div><div><b id="m7">0</b><small>7d</small></div></div>
       <button class="ibtn" data-k="t" title="Theme (T)">${icon('SunMoon', 17)}</button>
       <button class="ibtn" data-k="f" title="Focus mode (F)">${icon('Focus', 17)}</button>
     </div>
   </header>
   <aside class="activity glass">
-    <div class="pane-head"><h2>${icon('Activity', 15)} Activity timeline</h2><span class="live"><i></i><b id="liveCount">0</b> live</span></div>
+    <div class="pane-head"><h2>${icon('Activity', 15)} <span id="paneTitle">Needs you</span></h2><span class="live"><i></i><b id="liveCount">0</b> live</span></div>
     <div class="filters" id="chips"></div>
     <div id="jobs" class="jobs timeline"></div>
     <div class="links" id="links"></div>
   </aside>
   <aside class="pulse glass" id="pulse">
-    <div class="stat"><small>${icon('Loader', 11)}In flight</small><b data-n="busy">0</b><em id="mBusy">—</em><div class="spark" id="busyBar"><i></i></div></div>
-    <div class="stat"><small>${icon('CircleCheck', 11)}Completed today</small><b data-n="today">0</b><em id="mToday">—</em></div>
-    <div class="stat"><small>${icon('Timer', 11)}Avg latency</small><b id="mLat">—</b><em id="mP95">—</em></div>
-    <div class="stat"><small>${icon('Coins', 11)}Tokens today</small><b id="mTok">0</b><em id="mCost" title="Estimated from per-model list prices; real billing may differ">≈ $0.00 est.</em></div>
-    <div class="stat"><small>${icon('ShieldCheck', 11)}Success rate</small><b id="mOk">—</b><em id="mGate">—</em></div>
+    <div class="stat"><small id="lab1">${icon('Loader', 11)}Working</small><b data-n="busy">0</b><em id="mBusy">—</em><div class="spark" id="busyBar"><i></i></div></div>
+    <div class="stat"><small id="lab2">${icon('Hand', 11)}Needs you</small><b data-n="today">0</b><em id="mToday">—</em></div>
+    <div class="stat"><small id="lab3">${icon('Timer', 11)}Stuck</small><b id="mLat">—</b><em id="mP95">—</em></div>
+    <div class="stat"><small id="lab4">${icon('Coins', 11)}Idle</small><b id="mTok">0</b><em id="mCost" title="Estimated from per-model list prices; real billing may differ">—</em></div>
+    <div class="stat"><small id="lab5">${icon('ShieldCheck', 11)}Projects</small><b id="mOk">—</b><em id="mGate">—</em></div>
   </aside>
   <form class="cmd" id="cmd">
     <div class="cmd-glow"></div>
@@ -80,6 +82,7 @@ app.innerHTML = `
     </div>
   </form>
   <aside class="chat glass" id="chat"></aside>
+  <aside class="permit glass" id="permit"></aside>
   <aside class="dfocus glass" id="dfocus"></aside>
   <div class="sheet glass" id="sheet"><button class="ibtn close" id="sheetClose" title="Close (Esc)">${icon('X', 18)}</button><div id="sheetBody"></div></div>
   <div class="toasts" id="toasts"></div>
@@ -88,6 +91,10 @@ app.innerHTML = `
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 let st: State;
 let hive: Hive;
+let mode: 'live' | 'company' = 'live';
+let liveSnap: LiveSnap = { source: 'none', hooked: false, sessions: [], queue: [], zones: [] };
+let liveFilter = 'needs';
+let hiveSig = '';
 let filter = 'active';
 let chatWith: string | null = null;
 let swarm = false;
@@ -113,11 +120,23 @@ function tween(el: Element | null, to: number) {
   el.classList.remove('bump'); void (el as HTMLElement).offsetWidth; el.classList.add('bump');
 }
 
+function crewSig(depts: Dept[], workers: { id: string; dept: string }[]) {
+  return depts.map(d => d.id).join(',') + '|' + workers.map(w => `${w.id}@${w.dept}`).join(',');
+}
+function ensureHive(depts: Dept[], workers: State['workers'], core: string) {
+  const sig = crewSig(depts, workers);
+  if (sig !== hiveSig) { hive.syncPopulation(depts, workers); hiveSig = sig; }
+  hive.setCoreLabel(core);
+}
+
 async function boot() {
   const t0 = performance.now();
   st = await get<State>('/api/state');
+  liveSnap = st.live || liveSnap;
+  const saved = sessionStorage.getItem('kovan-mode');
+  mode = saved === 'company' || saved === 'live' ? saved : (st.mode === 'company' ? 'company' : 'live');
   document.title = `Kovan · ${st.name}`;
-  $('bizname').textContent = st.name;
+  $('bizname').textContent = mode === 'live' ? 'Live hive' : st.name;
   const b = $('backend');
   b.querySelector('b')!.textContent = st.backend === 'claude-cli' ? 'Online · CLI' : st.backend === 'api' ? 'Online · API' : 'Demo';
   b.className = `status ${st.backend === 'demo' ? 'demo' : 'live'}`;
@@ -126,25 +145,34 @@ async function boot() {
   $('model').innerHTML = st.models.map(m => `<option ${m === st.model ? 'selected' : ''}>${m}</option>`).join('');
   $('effort').innerHTML = st.efforts.map(e => `<option value="${e}">${e || 'auto'}</option>`).join('');
   const steps = $('spSteps')?.querySelectorAll('li span');
-  if (steps?.length === 3) { steps[0].textContent = `Indexing ${st.notes} knowledge notes`; steps[1].textContent = `Bringing ${st.workers.length} agents online across ${st.depts.length} departments`; steps[2].textContent = `Routing engine ready · ${st.backend === 'demo' ? 'demo mode' : 'live'}`; }
+  if (steps?.length === 3 && mode === 'live') {
+    steps[0].textContent = liveSnap.sessions.length ? `Found ${liveSnap.sessions.length} sessions` : 'Waiting for Claude Code sessions';
+    steps[1].textContent = `${liveSnap.zones.length} project zone${liveSnap.zones.length === 1 ? '' : 's'}`;
+    steps[2].textContent = st.backend === 'demo' ? 'Demo hive ready' : (liveSnap.hooked ? 'Hooks connected' : 'Watching session logs');
+  } else if (steps?.length === 3) { steps[0].textContent = `Indexing ${st.notes} knowledge notes`; steps[1].textContent = `Bringing ${st.workers.length} agents online across ${st.depts.length} departments`; steps[2].textContent = `Routing engine ready · ${st.backend === 'demo' ? 'demo mode' : 'live'}`; }
   if (!st.swarm?.enabled) $('swarm').style.display = 'none';
   st.jobs.forEach(j => { seen.add(j.id); lastState.set(j.id, j.state); });
 
-  hive = new Hive($('stage'), $('labels'), st.depts, st.workers, st.notes);
-  (window as unknown as { kovan: unknown }).kovan = { hive }; // handy for scripted filming
-  hive.onBeeClick = id => openChat(id);
-  hive.onDeptClick = id => flyToDept(id);
+  const pop = mode === 'live' ? liveCrew(liveSnap) : { depts: st.depts, workers: st.workers };
+  hive = new Hive($('stage'), $('labels'), pop.depts, pop.workers, mode === 'live' ? Math.max(liveSnap.sessions.length, 1) : st.notes);
+  hiveSig = crewSig(pop.depts, pop.workers);
+  hive.setCoreLabel(mode === 'live' ? 'LIVE HIVE' : 'KNOWLEDGE VAULT');
+  (window as unknown as { kovan: unknown }).kovan = { hive, get mode() { return mode; }, setMode, get live() { return liveSnap; } };
+  hive.onBeeClick = id => (mode === 'live' ? openLiveBee(id) : openChat(id));
+  hive.onDeptClick = id => (mode === 'live' ? flyToProject(id) : flyToDept(id));
   hive.onBeeHover = showTip;
+  applyModeChrome();
   hive.onReady = () => setTimeout(() => { $('splash').classList.add('out'); document.body.classList.add('ready'); hive.startIntro(); setTimeout(() => document.body.classList.add('ui-on'), 3200); setTimeout(() => $('splash').remove(), 900); }, Math.max(0, 2600 - (performance.now() - t0)));
   if (localStorage.getItem('kovan-theme') === 'light') toggleTheme();
 
   renderAll();
   connectStream();
   refreshUsage(); setInterval(refreshUsage, 60e3);
-  setInterval(renderJobs, 30e3);
+  setInterval(() => { if (mode === 'live') renderLive(); else renderJobs(); }, 5000);
 }
 
 function showTip(id: string | null, x: number, y: number) {
+  if (mode === 'live') { showLiveTip(id, x, y); return; }
   const tip = $('tip');
   if (!id) { tip.classList.remove('on'); return; }
   const w = st.workers.find(x => x.id === id)!; const c = deptOf(w.dept)!;
@@ -163,9 +191,12 @@ function connectStream() {
   es.addEventListener('connectors', e => { st.connectors = JSON.parse((e as MessageEvent).data); renderLinks(); });
   es.addEventListener('pulse', e => { const p: Pulse = JSON.parse((e as MessageEvent).data); hive.pulse(p); if (p.type === 'write' && p.note) st.notes++; });
   es.addEventListener('chat', e => { const { worker, msg } = JSON.parse((e as MessageEvent).data); if (worker === chatWith) appendMsg(msg); });
+  es.addEventListener('live', e => { liveSnap = JSON.parse((e as MessageEvent).data); st.live = liveSnap; if (mode === 'live') renderLive(); });
 }
 
 function renderAll() {
+  if (mode === 'live') { renderLive(); return; }
+  ensureHive(st.depts, st.workers, 'KNOWLEDGE VAULT');
   const states: Record<string, 'working' | 'approval'> = {};
   for (const j of st.jobs) {
     if (j.state === 'working') { if (j.worker) states[j.worker] = 'working'; j.pieces?.forEach(p => { if (p.state === 'working') states[p.worker] = 'working'; }); }
@@ -224,6 +255,7 @@ const BUCKETS: Record<string, (j: Job) => boolean> = {
   done: j => ['done', 'failed'].includes(j.state),
 };
 function renderJobs() {
+  if (mode === 'live') return;
   const counts = Object.fromEntries(Object.entries(BUCKETS).map(([k, f]) => [k, st.jobs.filter(f).length]));
   const sched = counts.scheduled + st.routines.filter(r => !r.paused).length;
   const defs: [string, string, number][] = [['active', 'In flight', counts.active], ['approval', 'Approval', counts.approval], ['scheduled', 'Scheduled', sched], ['done', 'Completed', counts.done]];
@@ -443,7 +475,7 @@ async function openSheet(kind: string) {
   if (kind === 'calendar') sheet.refresh = openCalendar(body, () => st, pickJob);
   if (kind === 'board') paintBoard(body, st, pickJob);
   if (kind === 'departments') paintDepartments(body);
-  if (kind === 'agents') paintAgents(body);
+  if (kind === 'agents') { if (mode === 'live') paintSessions(body, liveSnap, id => { closeSheet(); openLiveBee(id); }); else paintAgents(body); }
 }
 function closeSheet() { sheet?.stop?.(); sheet = null; $('sheet').classList.remove('open'); setNav('hive'); setTimeout(() => { if (!sheet) $('sheetBody').innerHTML = ''; }, 300); }
 $('sheetClose').onclick = closeSheet;
@@ -461,6 +493,7 @@ function toggleFocus() { focusMode = !focusMode; document.body.classList.toggle(
 
 document.querySelectorAll<HTMLButtonElement>('.topbar [data-k]').forEach(b => b.onclick = () => key(b.dataset.k!));
 function key(k: string) {
+  if (mode === 'live' && (k === 'v' || k === 'k' || k === 'b' || k === 'd')) return;
   if (k === 'v') return sheet?.kind === 'vault' ? closeSheet() : openSheet('vault');
   if (k === 'k') return sheet?.kind === 'calendar' ? closeSheet() : openSheet('calendar');
   if (k === 'b') return sheet?.kind === 'board' ? closeSheet() : openSheet('board');
@@ -476,7 +509,8 @@ addEventListener('keydown', e => {
   if (e.key === '/') { e.preventDefault(); task.focus(); return; }
   const n = Number(e.key);
   if ($('dpick').classList.contains('open') && n >= 0 && n <= st.depts.length) { setDeptChoice(n ? st.depts[n - 1].id : ''); $('dpick').classList.remove('open'); task.focus(); return; }
-  if (n >= 1 && n <= st.depts.length) { flyToDept(st.depts[n - 1].id); return; }
+  const zones = mode === 'live' ? liveCrew(liveSnap).depts : st.depts;
+  if (n >= 1 && n <= zones.length) { (mode === 'live' ? flyToProject : flyToDept)(zones[n - 1].id); return; }
   if (e.key === '0') { leaveDept(); return; }
   key(e.key.toLowerCase());
 });
@@ -643,5 +677,143 @@ function paintAgents(root: HTMLElement) {
   else root.innerHTML = `${head}<div class="agrid">${body}</div>`;
   root.querySelectorAll<HTMLElement>('.acard').forEach(el => el.onclick = () => { closeSheet(); openChat(el.dataset.w!); });
 }
+
+function applyModeChrome() {
+  document.body.classList.toggle('mode-live', mode === 'live');
+  document.body.classList.toggle('mode-company', mode === 'company');
+  $('modeBtn').textContent = mode === 'live' ? 'Company' : 'Live hive';
+  $('paneTitle').textContent = mode === 'live' ? 'Needs you' : 'Activity timeline';
+  const agents = document.querySelector('#nav button[data-view="agents"] span');
+  if (agents) agents.textContent = mode === 'live' ? 'Sessions' : 'Agents';
+  const labs = mode === 'live'
+    ? ['Working', 'Needs you', 'Stuck', 'Idle', 'Projects']
+    : ['In flight', 'Completed today', 'Avg latency', 'Tokens today', 'Success rate'];
+  labs.forEach((label, i) => {
+    const el = document.getElementById('lab' + (i + 1));
+    if (!el) return;
+    const ic = el.querySelector('svg');
+    el.textContent = '';
+    if (ic) el.append(ic, ' ' + label);
+  });
+  $('bizname').textContent = mode === 'live' ? 'Live hive' : st.name;
+  $('chips').innerHTML = '';
+  $('chips').dataset.mode = '';
+}
+function setMode(next: 'live' | 'company') {
+  if (next === mode) return;
+  mode = next;
+  sessionStorage.setItem('kovan-mode', next);
+  if (sheet) closeSheet();
+  if (chatWith) closeChat();
+  leaveDept();
+  applyModeChrome();
+  renderAll();
+}
+function showLiveTip(id: string | null, x: number, y: number) {
+  const tip = $('tip');
+  if (!id) { tip.classList.remove('on'); return; }
+  const bee = liveSnap.sessions.find(s => s.id === id);
+  if (!bee) { tip.classList.remove('on'); return; }
+  const color = liveSnap.zones.find(z => z.id === bee.zone)?.color || '#f5b13d';
+  tip.classList.add('on');
+  tip.style.transform = `translate3d(${x}px,${y}px,0) translate(-50%,-100%)`;
+  const key = id + bee.state + bee.activity;
+  if (tip.dataset.id === key) return;
+  tip.dataset.id = key;
+  const line = bee.state === 'needs-you' ? 'needs you' : bee.state;
+  tip.innerHTML = `<div class="tip-h">${hexAvatar(bee.name, color, 22)}<div><b>${esc(bee.name)}</b><span>${esc(bee.project)} · ${esc(line)}</span></div></div><em class="${bee.state === 'needs-you' ? 'approval' : bee.state}">${esc((bee.activity || bee.role).slice(0, 80))}</em>`;
+}
+async function answerPermit(id: string, behavior: 'allow' | 'deny' | 'always') {
+  try { await post('/api/live/answer', { id, behavior }); } catch { /* the hook may already have timed out */ }
+  try { liveSnap = await get<LiveSnap>('/api/live'); } catch { /* keep the last snapshot */ }
+  if (mode === 'live') renderLive();
+}
+function renderLive() {
+  const pop = liveCrew(liveSnap);
+  ensureHive(pop.depts, pop.workers, 'LIVE HIVE');
+  const states: Record<string, 'working' | 'approval' | 'stuck'> = {};
+  for (const bee of liveSnap.sessions) if (bee.state !== 'idle') states[bee.id] = bee.state === 'needs-you' ? 'approval' : bee.state;
+  hive?.setStates(states);
+  for (const zone of liveSnap.zones) {
+    const bees = liveSnap.sessions.filter(s => s.zone === zone.id);
+    hive?.setDeptLoad(zone.id, {
+      working: bees.filter(b => b.state === 'working').length,
+      stuck: bees.filter(b => b.state === 'stuck').length,
+      queued: 0,
+      approval: bees.filter(b => b.state === 'needs-you').length,
+      size: Math.max(1, bees.length),
+    });
+  }
+  noteNewPermits(liveSnap.queue);
+  const counts = {
+    needs: liveSnap.queue.length,
+    working: liveSnap.sessions.filter(s => s.state === 'working').length,
+    stuck: liveSnap.sessions.filter(s => s.state === 'stuck').length,
+    idle: liveSnap.sessions.filter(s => s.state === 'idle').length,
+  };
+  const chips = $('chips');
+  if (chips.dataset.mode !== 'live') {
+    chips.dataset.mode = 'live';
+    chips.innerHTML = ([['needs', 'Needs you'], ['working', 'Working'], ['stuck', 'Stuck'], ['idle', 'Idle']] as const).map(([k, l]) => `<button class="flt" data-f="${k}"><span>${l}</span><b data-v="0">0</b></button>`).join('');
+    chips.querySelectorAll<HTMLElement>('.flt').forEach(c => c.onclick = () => { liveFilter = c.dataset.f || 'needs'; renderLive(); });
+  }
+  ([['needs', counts.needs], ['working', counts.working], ['stuck', counts.stuck], ['idle', counts.idle]] as const).forEach(([k, n]) => {
+    const btn = chips.querySelector(`[data-f="${k}"]`);
+    if (!btn) return;
+    btn.classList.toggle('on', liveFilter === k);
+    btn.classList.toggle('alert', k === 'needs' && n > 0);
+    tween(btn.querySelector('b'), n);
+  });
+  tween($('liveCount'), counts.working + counts.needs);
+  paintQueue($('jobs'), liveSnap, liveFilter, answerPermit, openLiveBee);
+  paintPermit($('permit'), liveSnap, answerPermit, openLiveBee);
+  tween(document.querySelector('[data-n="busy"]'), counts.working);
+  tween(document.querySelector('[data-n="today"]'), counts.needs);
+  $('mLat').textContent = String(counts.stuck);
+  $('mTok').textContent = String(counts.idle);
+  $('mOk').textContent = String(liveSnap.zones.length);
+  $('mBusy').textContent = liveSnap.hooked ? 'hooks' : liveSnap.source === 'logs' ? 'from session logs' : st.backend === 'demo' ? 'simulated' : 'quiet';
+  $('mToday').textContent = 'sorted by wait';
+  $('mP95').textContent = counts.stuck ? 'rate limit or error' : 'none';
+  $('mCost').textContent = st.backend === 'demo' ? 'demo sessions' : (liveSnap.hooked ? 'exact, from hooks' : 'inferred from logs');
+  $('mGate').textContent = counts.needs ? `${counts.needs} waiting` : 'clear';
+  const busyBees = counts.working + counts.needs;
+  ($('busyBar').firstElementChild as HTMLElement).style.width = `${(busyBees / Math.max(1, liveSnap.sessions.length)) * 100}%`;
+  if (sheet?.kind === 'agents') paintSessions($('sheetBody'), liveSnap, id => { closeSheet(); openLiveBee(id); });
+}
+function openLiveBee(id: string) {
+  const bee = liveSnap.sessions.find(s => s.id === id);
+  if (!bee) return;
+  chatWith = null;
+  hive?.focusBee(id);
+  const color = liveSnap.zones.find(z => z.id === bee.zone)?.color || '#f5b13d';
+  const permit = liveSnap.queue.find(q => q.beeId === id);
+  const el = $('chat');
+  el.innerHTML = `<div class="ch-head">${hexAvatar(bee.name, color, 44)}<div class="who"><b>${esc(bee.name)}</b><span>${esc(bee.role)} · <em style="color:${color}">${esc(bee.project)}</em></span></div><button class="ibtn x" title="Close (Esc)">${icon('X', 17)}</button>
+    <p class="does">${esc(bee.activity || 'Quiet')}</p>
+    <div class="chips2"><span class="c">${esc(bee.state)}</span><span class="c dim">${esc(bee.source === 'codex' ? 'Codex' : 'Claude Code')}</span></div></div>
+    <div class="msgs">${permit ? permitCard(permit, bee) : `<div class="msg system"><div class="md">${esc(bee.attention || 'This session is not waiting on you.')}</div></div>`}</div>`;
+  el.classList.add('open');
+  document.body.classList.add('chatting');
+  el.querySelector('.x')!.addEventListener('click', closeChat);
+  el.querySelectorAll<HTMLElement>('[data-go]').forEach(btn => btn.onclick = () => { if (permit) answerPermit(permit.id, btn.dataset.go as 'allow' | 'deny' | 'always'); });
+}
+function flyToProject(id: string) {
+  if (sheet) closeSheet();
+  if ($('chat').classList.contains('open')) closeChat();
+  hive.focusDept(id);
+  const zone = liveSnap.zones.find(z => z.id === id);
+  if (!zone) return;
+  const bees = liveSnap.sessions.filter(s => s.zone === id);
+  $('dfocus').innerHTML = `<article class="dcard compact" style="--c:${zone.color}"><header><span class="dtile">${icon('Folder', 20)}</span><div class="dtitle"><b>${esc(zone.name)}</b><span>${zone.source === 'codex' ? 'Codex' : 'Claude Code'}</span></div></header>
+    <p class="mission">${bees.length} session${bees.length === 1 ? '' : 's'} in this project.</p>
+    <div class="dteam"><div>${bees.map(b => `<button class="mem ${b.state === 'needs-you' ? 'approval' : b.state}" data-bee="${esc(b.id)}" title="${esc(b.name)}">${hexAvatar(b.name, zone.color, 30)}</button>`).join('')}</div></div>
+    <footer><button class="dbtn fly" id="leaveLive">${icon('LocateFixed', 14)}Overview</button></footer></article>`;
+  $('dfocus').classList.add('open');
+  document.body.classList.add('dept-focus');
+  $('dfocus').querySelectorAll<HTMLElement>('[data-bee]').forEach(el => el.onclick = () => openLiveBee(el.dataset.bee || ''));
+  document.getElementById('leaveLive')?.addEventListener('click', leaveDept);
+}
+$('modeBtn').onclick = () => setMode(mode === 'live' ? 'company' : 'live');
 
 boot().catch(err => { $('splash')?.remove(); app.insertAdjacentHTML('beforeend', `<div class="fatal">${mark(48, 'ft')}<p>Could not reach the Kovan server.</p><code>npm start</code><small>${esc(String(err))}</small></div>`); });

@@ -4,6 +4,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { sumUsage } from '../shared/hooks.js';
+
+export { sumUsage };
 
 const H5 = 5 * 3600e3, D7 = 7 * 86400e3;
 let cache = null;
@@ -37,7 +40,7 @@ export function readUsage(ownRuns = []) {
         const u = j.message?.usage; const ts = Date.parse(j.timestamp);
         if (!u || !ts || now - ts > D7) continue;
         const key = j.message?.id || j.uuid; if (key && seen.has(key)) continue; if (key) seen.add(key);
-        const n = (u.input_tokens || 0) + (u.output_tokens || 0) + (u.cache_creation_input_tokens || 0);
+        const n = sumUsage(u);
         week += n; if (now - ts <= H5) session += n;
       } catch {}
     }

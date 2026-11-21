@@ -12,8 +12,22 @@ export interface Routine { id: string; text: string; dept: string; rule: Rule; m
 export interface Connector { name: string; ok: boolean; usable?: boolean; status: string }
 export interface ChatMsg { from: 'owner' | 'worker' | 'system'; text: string; t: number; job?: string }
 export interface State {
-  name: string; backend: 'claude-cli' | 'api' | 'demo'; model: string; models: string[]; efforts: string[]; swarm: { enabled: boolean; max: number };
+  name: string; backend: 'claude-cli' | 'api' | 'demo'; mode?: 'live' | 'company'; model: string; models: string[]; efforts: string[]; swarm: { enabled: boolean; max: number };
+  live?: LiveSnap;
   depts: Dept[]; workers: Worker[]; jobs: Job[]; routines: Routine[]; connectors: { items: Connector[]; note: string }; notes: number;
   skills: { name: string; about: string; workers: string[]; depts: string[] }[];
 }
 export interface Pulse { type: 'read' | 'write' | 'work' | 'handoff' | 'chat'; worker?: string; note?: string; from?: string; to?: string }
+export type LiveState = 'idle' | 'working' | 'stuck' | 'needs-you';
+export interface LivePermit { id: string; tool: string; command: string; diff: string; file: string; since: number }
+export interface LiveBee {
+  id: string; sessionId: string; kind: 'session' | 'subagent'; project: string; zone: string;
+  name: string; role: string; model: string; state: LiveState; activity: string; updated: number;
+  source: 'claude' | 'codex' | 'demo'; attention: string; permission: LivePermit | null;
+}
+export interface LiveQueueItem {
+  id: string; beeId: string; sessionId: string; project: string; name: string;
+  tool: string; command: string; diff: string; file: string; since: number;
+}
+export interface LiveZoneInfo { id: string; name: string; color: string; source: string }
+export interface LiveSnap { source: 'hooks' | 'logs' | 'demo' | 'none'; hooked: boolean; sessions: LiveBee[]; queue: LiveQueueItem[]; zones: LiveZoneInfo[] }
