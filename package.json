@@ -38,7 +38,7 @@
     "demo": "cross-env KOVAN_DEMO=1 node server/index.mjs",
     "smoke": "node scripts/smoke.mjs",
     "shots": "node scripts/shots.mjs",
-    "test": "node --test \"shared/*.test.js\" \"server/*.test.mjs\""
+    "test": "node scripts/test.mjs"
   },
   "devDependencies": {
     "@fontsource/inter": "^5.3.0",

@@ -224,7 +224,8 @@ export class Hive {
   private buildDepts(depts: Dept[], workers: Worker[]) {
     const dist = 9.2;
     depts.forEach((dept, i) => {
-      const a = (i / depts.length) * Math.PI * 2 - Math.PI / 2;
+      // Half a step off due-north so a zone sign does not sit under the metrics bar.
+      const a = (i / depts.length) * Math.PI * 2 - Math.PI / 2 + Math.PI / depts.length;
       const center = new THREE.Vector3(Math.cos(a) * dist, 0, Math.sin(a) * dist);
       this.deptCenters.set(dept.id, center);
       const color = new THREE.Color(dept.color);
@@ -251,11 +252,11 @@ export class Hive {
       const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 1, 6), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
       const banner = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.bannerTexture(dept), transparent: true, depthWrite: false }));
       banner.center.set(0.5, 0); banner.scale.set(4.2, 1.05, 1); banner.renderOrder = 5;
-      banner.position.copy(center).setY(3.9);
-      mast.position.copy(banner.position).setY(2.3 + (3.9 - 2.3) / 2); mast.scale.y = 3.9 - 2.3;
+      banner.position.copy(center).setY(2.55);
+      mast.position.copy(banner.position).setY(1.7); mast.scale.y = 1.15;
       this.own(plate); this.own(rim); this.own(mast); this.own(banner);
       // live status chip under the banner
-      const chip = this.addLabel(`<i></i><b data-zone-text>idle · ${team.length}</b>`, banner.position.clone().setY(3.55), 'lbl dept', true);
+      const chip = this.addLabel(`<i></i><b data-zone-text>idle · ${team.length}</b>`, banner.position.clone().setY(2.15), 'lbl dept', true);
       chip.style.setProperty('--c', dept.color);
       chip.title = `${dept.name} · ${dept.tr}`;
       chip.addEventListener('click', () => this.onDeptClick(dept.id));
@@ -622,10 +623,24 @@ export class Hive {
       const focus = this.focusedDept === z.dept.id ? 1 : 0;
       (z.plate.material as THREE.ShaderMaterial).uniforms.uLoad.value = z.load + focus * 0.35;
       (z.rim.material as THREE.MeshBasicMaterial).opacity = 0.22 + z.load * 0.55 + focus * 0.25 + Math.sin(t * 2 + z.seed) * 0.04;
-      z.banner.position.y = 3.9 + Math.sin(t * 0.9 + z.seed) * 0.08;
-      // keep signs readable: far ones grow a little, near ones shrink (clamped)
-      const k = THREE.MathUtils.clamp(this.camera.position.distanceTo(z.banner.position) / 23, 0.5, 1.55);
-      z.banner.scale.set(4.2 * k, 1.05 * k, 1);
+      z.banner.position.y = 2.55 + Math.sin(t * 0.9 + z.seed) * 0.06;
+      // Far signs used to grow until they covered the metrics bar. Keep them modest.
+      const k = THREE.MathUtils.clamp(this.camera.position.distanceTo(z.banner.position) / 28, 0.78, 1.05);
+      z.banner.scale.set(3.35 * k, 0.84 * k, 1);
+      // The sign's anchor is its bottom edge. Drop it until that top clears the HUD.
+      const top = z.banner.position.clone();
+      top.y += z.banner.scale.y;
+      for (let n = 0; n < 8; n++) {
+        const sp = this.project(top);
+        if (sp.behind || sp.y >= 168) break;
+        z.banner.position.y -= 0.22;
+        top.y -= 0.22;
+      }
+      const h = Math.max(0.45, z.banner.position.y - 1.35);
+      z.mast.scale.y = h;
+      z.mast.position.set(z.center.x, 1.35 + h / 2, z.center.z);
+      const chipLabel = this.labels.find(l => l.el === z.chip);
+      if (chipLabel) chipLabel.pos.set(z.center.x, Math.max(1.15, z.banner.position.y - 0.42), z.center.z);
       (z.mast.material as THREE.MeshBasicMaterial).opacity = 0.25 + z.load * 0.5;
     }
 

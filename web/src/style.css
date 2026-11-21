@@ -491,7 +491,7 @@ body.mode-live #nav button[data-view="vault"],
 body.mode-live #nav button[data-view="calendar"],
 body.mode-live #nav button[data-view="board"],
 body.mode-live #nav button[data-view="departments"] { display: none; }
-body.mode-company .permit { display: none !important; }
+body.mode-company .permit, body.chatting .permit { display: none !important; }
 body:not(.ui-on) .permit { visibility: hidden; }
 .permit { display: none; position: fixed; z-index: 26; right: 18px; bottom: 18px; width: min(420px, calc(100vw - 390px)); padding: 0; overflow: hidden; }
 .permit.on { display: block; }

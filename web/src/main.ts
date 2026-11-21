@@ -504,7 +504,13 @@ function key(k: string) {
 }
 addEventListener('keydown', e => {
   const typing = /INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName);
-  if (e.key === 'Escape') { if (document.querySelector('.plan')) document.querySelector('.plan')!.remove(); else if (sheet) closeSheet(); else if (chatWith) closeChat(); else leaveDept(); return; }
+  if (e.key === 'Escape') {
+    if (document.querySelector('.plan')) document.querySelector('.plan')!.remove();
+    else if (sheet) closeSheet();
+    else if (chatWith || $('chat').classList.contains('open')) closeChat();
+    else leaveDept();
+    return;
+  }
   if (typing || e.metaKey || e.ctrlKey || e.altKey || !st) return;
   if (e.key === '/') { e.preventDefault(); task.focus(); return; }
   const n = Number(e.key);
@@ -780,6 +786,12 @@ function renderLive() {
   const busyBees = counts.working + counts.needs;
   ($('busyBar').firstElementChild as HTMLElement).style.width = `${(busyBees / Math.max(1, liveSnap.sessions.length)) * 100}%`;
   if (sheet?.kind === 'agents') paintSessions($('sheetBody'), liveSnap, id => { closeSheet(); openLiveBee(id); });
+  const open = $('chat');
+  if (open.classList.contains('open') && open.dataset.bee) {
+    const bee = liveSnap.sessions.find(s => s.id === open.dataset.bee);
+    const mark = (bee?.state || '') + (bee?.permission?.id || '');
+    if (bee && open.dataset.state !== mark) openLiveBee(bee.id);
+  }
 }
 function openLiveBee(id: string) {
   const bee = liveSnap.sessions.find(s => s.id === id);
@@ -793,6 +805,8 @@ function openLiveBee(id: string) {
     <p class="does">${esc(bee.activity || 'Quiet')}</p>
     <div class="chips2"><span class="c">${esc(bee.state)}</span><span class="c dim">${esc(bee.source === 'codex' ? 'Codex' : 'Claude Code')}</span></div></div>
     <div class="msgs">${permit ? permitCard(permit, bee) : `<div class="msg system"><div class="md">${esc(bee.attention || 'This session is not waiting on you.')}</div></div>`}</div>`;
+  el.dataset.bee = id;
+  el.dataset.state = bee.state + (permit?.id || '');
   el.classList.add('open');
   document.body.classList.add('chatting');
   el.querySelector('.x')!.addEventListener('click', closeChat);

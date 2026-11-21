@@ -31,7 +31,7 @@ You have four Claude Code sessions open, and one of them has been sitting on a p
 <p align="center">
   <a href="assets/kovan-demo.mp4"><b>Watch the demo (MP4)</b></a>
   <br>
-  <sub>Recorded from <code>npm run demo</code>. The projects (lighthouse-api, northwind-web, paperkite-cli) are fictional.</sub>
+  <sub>About 20 seconds from <code>npm run demo</code>: sessions at work, a bee that starts waiting, the approval card, Allow, then Sessions. The projects are fictional.</sub>
 </p>
 
 <table>
@@ -48,12 +48,6 @@ You have four Claude Code sessions open, and one of them has been sitting on a p
   <tr>
     <td align="center"><sub><b>Needs you</b>: tool, command and diff. Allow, Deny, or Always allow.</sub></td>
     <td align="center"><sub><b>Sessions</b> (<code>A</code>): every bee, grouped by project.</sub></td>
-  </tr>
-  <tr>
-    <td colspan="2"><img src="assets/screenshot-company.png" alt="Company mode: the original six-department hive, still available"></td>
-  </tr>
-  <tr>
-    <td colspan="2" align="center"><sub><b>Company mode</b> is still there: departments, swarm, vault, board and routines. The live hive is the default.</sub></td>
   </tr>
 </table>
 
