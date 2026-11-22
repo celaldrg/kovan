@@ -1,6 +1,7 @@
 // Web Push (RFC 8291 + VAPID) with a key generated on this machine.
 // There is no third-party account. A failed send never approves anything.
 import crypto from 'node:crypto';
+import net from 'node:net';
 
 const CONTACT = 'https://github.com/celaldrg/kovan';
 
@@ -71,17 +72,35 @@ export function subscriberKeys() {
   return { publicKey: ecdh.getPublicKey(), privateKey: ecdh.getPrivateKey(), auth: crypto.randomBytes(16) };
 }
 
+function isPrivateV4(host) {
+  const match = host.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (!match) return false;
+  const n = match.slice(1).map(Number);
+  if (n.some(part => part > 255)) return false;
+  if (n[0] === 10 || n[0] === 127 || n[0] === 0) return true;
+  if (n[0] === 169 && n[1] === 254) return true;
+  if (n[0] === 172 && n[1] >= 16 && n[1] <= 31) return true;
+  if (n[0] === 192 && n[1] === 168) return true;
+  return false;
+}
+
+/** ULA (fc00::/7), link-local (fe80::/10), loopback, and IPv4-mapped private addresses. */
+function isPrivateV6(host) {
+  const lower = host.toLowerCase();
+  if (lower === '::' || lower === '::1') return true;
+  const mapped = lower.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (mapped) return isPrivateV4(mapped[1]);
+  if (/^f[cd][0-9a-f]{2}:/.test(lower)) return true;
+  if (/^fe[89ab][0-9a-f]:/.test(lower)) return true;
+  return false;
+}
+
 function isPrivateHost(host) {
-  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) return true;
-  const v4 = host.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
-  if (v4) {
-    const n = v4.slice(1).map(Number);
-    if (n[0] === 10 || n[0] === 127 || n[0] === 0) return true;
-    if (n[0] === 169 && n[1] === 254) return true;
-    if (n[0] === 172 && n[1] >= 16 && n[1] <= 31) return true;
-    if (n[0] === 192 && n[1] === 168) return true;
-  }
-  if (host === '::1' || host.startsWith('fc') || host.startsWith('fd') || host.startsWith('fe80')) return true;
+  const name = String(host || '').toLowerCase().replace(/^\[|\]$/g, '');
+  if (name === 'localhost' || name.endsWith('.localhost') || name.endsWith('.local')) return true;
+  // Only IP literals. A hostname such as fcm.googleapis.com is not a ULA address.
+  if (net.isIP(name) === 4) return isPrivateV4(name);
+  if (net.isIP(name) === 6) return isPrivateV6(name);
   return false;
 }
 

@@ -14,7 +14,7 @@ Local-first · cost and budgets · approve from your phone · demo runs with zer
 
 [![CI](https://github.com/celaldrg/kovan/actions/workflows/ci.yml/badge.svg)](https://github.com/celaldrg/kovan/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-f5a524.svg)](LICENSE)
-[![version](https://img.shields.io/badge/version-0.1.1-2dd4bf)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.2.0-2dd4bf)](CHANGELOG.md)
 ![Node 20+](https://img.shields.io/badge/node-%3E%3D20-2dd4bf)
 ![three.js](https://img.shields.io/badge/three.js-r170-black)
 
@@ -38,7 +38,7 @@ You have four Claude Code sessions open, and one of them has been sitting on a p
 
 <table>
   <tr>
-    <td colspan="2"><img src="assets/screenshot-hive.png" alt="Live hive: three project zones, bees working, stuck and waiting, and a Needs you card"></td>
+    <td colspan="2"><img src="assets/screenshot-hive.png" alt="Live hive: project zones, bees working, stuck and idle, with budget warnings and a runaway flag"></td>
   </tr>
   <tr>
     <td colspan="2" align="center"><sub><b>Live hive</b>: one zone per project, one bee per session. Working, stuck, idle, and waiting are different.</sub></td>

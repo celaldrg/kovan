@@ -26,9 +26,9 @@ Kovan is a local dashboard. It can show Claude Code sessions and answer permissi
 What 0.2.0 keeps from 0.1.1, and what it adds:
 
 - Binds `127.0.0.1` unless `KOVAN_HOST` is set. A non-loopback bind prints a warning. `KOVAN_HOST_ALLOW` is the list of extra `Host` names that may call the API. `0.0.0.0` is not itself an allowed `Host`.
-- Writes a new 32-byte token to a mode `0600` file on each launch and requires the header `x-kovan-token` on every `/api/*` route, including `/api/hooks`.
+- Writes a new 32-byte token to a mode `0600` file on each launch and requires the header `x-kovan-token` on `/api/*`, including `/api/hooks`. The exception is the phone routes, and only when `KOVAN_PHONE=1`: pairing, the pending list, push subscription, and a single approval use the paired device credential (`x-kovan-device`) or a one-time pairing code, not the launch token.
 - Installed hooks are command hooks. `bin/hook-forward.mjs` reads the token file and posts only to a loopback `/api/hooks` URL. If the token is missing, the server is down, or the wait ends, the process exits 0 and prints nothing. That is not an allow.
-- Checks `Host` on every request. For any request that is not `GET` or `HEAD`, requires `Content-Type: application/json` and, when `Origin` is present, requires it to be this server's own `http://<allowed-host>:<port>`. No `Access-Control-Allow-Origin` header is sent.
+- Checks `Host` on every request. For any request that is not `GET` or `HEAD`, requires `Content-Type: application/json` and, when `Origin` is present, requires it to be this server's own `http://<allowed-host>:<port>`. If phone access is on, that `Origin` may instead be the exact `KOVAN_PUBLIC_ORIGIN`, including when that origin is `https`. No `Access-Control-Allow-Origin` header is sent.
 - Allowlists model, effort, department, and schedule-rule fields before they are stored. The Claude CLI is started without a shell. The model is a single `--model=<id>` argument. The prompt is written to stdin.
 - Escapes text the web UI inserts as HTML, and sets a Content-Security-Policy that allows scripts only from the app's own files. Inline styles remain allowed because zone colors are style attributes.
 - Returns `413` for a body over the limit. Unexpected errors return `request failed`. The server log keeps the detail.

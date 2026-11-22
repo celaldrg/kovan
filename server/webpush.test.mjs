@@ -12,10 +12,20 @@ test('a web push payload round-trips without a third-party account', () => {
 
 test('push endpoints must be https and must not target loopback', async () => {
   assert.equal(pushEndpointAllowed('https://push.example/send/1'), true);
+  assert.equal(pushEndpointAllowed('https://fcm.googleapis.com/fcm/send/abc'), true);
+  assert.equal(pushEndpointAllowed('https://fcmregistrations.googleapis.com/fcm/send/abc'), true);
+  assert.equal(pushEndpointAllowed('https://updates.push.services.mozilla.com/wpush/v2/abc'), true);
+  assert.equal(pushEndpointAllowed('https://web.push.apple.com/abc'), true);
   assert.equal(pushEndpointAllowed('http://push.example/send/1'), false);
   assert.equal(pushEndpointAllowed('https://127.0.0.1/push'), false);
   assert.equal(pushEndpointAllowed('https://localhost/push'), false);
   assert.equal(pushEndpointAllowed('https://10.1.2.3/push'), false);
+  assert.equal(pushEndpointAllowed('https://192.168.1.20/push'), false);
+  assert.equal(pushEndpointAllowed('https://172.16.0.4/push'), false);
+  assert.equal(pushEndpointAllowed('https://[::1]/push'), false);
+  assert.equal(pushEndpointAllowed('https://[fc00::1]/push'), false);
+  assert.equal(pushEndpointAllowed('https://[fd12:3456::1]/push'), false);
+  assert.equal(pushEndpointAllowed('https://[fe80::1]/push'), false);
   const keys = subscriberKeys();
   let called = 0;
   const result = await sendWebPush({
