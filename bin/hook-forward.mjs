@@ -1,24 +1,21 @@
 #!/usr/bin/env node
-// Forwards a Claude Code command-hook payload to Kovan. SessionStart cannot be
-// an HTTP hook, so the installer registers this command instead. If Kovan is
-// down or slow, the process still exits 0 and prints nothing: Claude Code
-// continues, and a permission prompt is never auto-allowed from here.
+// Forwards a Claude Code command-hook payload to Kovan. The launch token is
+// read from data/token on each call and sent as x-kovan-token. If Kovan is
+// down, the token is missing, or the wait ends, this process exits 0 and
+// prints nothing: Claude Code continues, and a permission is never auto-allowed.
 import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { forwardHook } from '../server/hook-client.mjs';
 
-const port = process.env.KOVAN_PORT || '4700';
-const url = process.env.KOVAN_HOOK_URL || `http://127.0.0.1:${port}/api/hooks`;
-const body = fs.readFileSync(0, 'utf8');
-const ac = new AbortController();
-const timer = setTimeout(() => ac.abort(), Number(process.env.KOVAN_HOOK_TIMEOUT_MS || 8000));
+const here = path.dirname(fileURLToPath(import.meta.url));
+let body = '';
+try { body = fs.readFileSync(0, 'utf8'); } catch { body = ''; }
+let out = '';
 try {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body,
-    signal: ac.signal,
+  out = await forwardHook(body, process.argv.slice(2), process.env, {
+    defaultTokenFile: path.join(here, '..', 'data', 'token'),
   });
-  const text = await res.text();
-  if (res.ok && text.trim().startsWith('{')) process.stdout.write(text.trim());
-} catch { /* Kovan is not running. Leave the decision to Claude Code. */ }
-clearTimeout(timer);
+} catch { out = ''; }
+if (out) process.stdout.write(out);
 process.exit(0);

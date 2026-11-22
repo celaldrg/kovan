@@ -13,7 +13,7 @@ export function paintBoard(root: HTMLElement, st: State, onPick: (jobId: string)
       const list = st.jobs.filter(j => states.includes(j.state)).slice(title === 'Done' ? -24 : -40).reverse();
       const extra = title === 'Scheduled' ? st.routines.filter(r => !r.paused).map(r => `<div class="card routine" style="--c:${deptColor(r.dept)}"><div>${icon('Repeat', 12)} ${esc(r.text)}</div><small>next ${r.next ? new Date(r.next).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}</small></div>`).join('') : '';
       return `<section class="lane-${states[0]}"><h3>${icon(ic, 13)}${title} <span>${list.length}</span></h3>${extra}${list.map(j => `<div class="card ${j.state}" data-job="${j.id}" style="--c:${deptColor(j.dept)}">
-        <div>${j.swarm ? icon('Users', 12) + ' ' : ''}${esc(j.text)}</div><small><b class="dp">${st.depts.find(d => d.id === j.dept)?.code || '···'}</b> ${nm(j.worker)}${j.modelUsed ? ` · ${j.modelUsed}` : ''}${j.late ? ' · late' : ''}${j.state === 'failed' ? ' · failed' : ''}</small></div>`).join('')}</section>`;
+        <div>${j.swarm ? icon('Users', 12) + ' ' : ''}${esc(j.text)}</div><small><b class="dp">${esc(st.depts.find(d => d.id === j.dept)?.code || '···')}</b> ${esc(nm(j.worker))}${j.modelUsed ? ` · ${esc(j.modelUsed)}` : ''}${j.late ? ' · late' : ''}${j.state === 'failed' ? ' · failed' : ''}</small></div>`).join('')}</section>`;
     }).join('')}</div>`;
   root.querySelectorAll<HTMLElement>('.card[data-job]').forEach(el => el.onclick = () => onPick(el.dataset.job!));
 }

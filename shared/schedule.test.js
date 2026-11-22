@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSchedule, nextRun, describeRule, isOutbound, detectSwarm, occurrences } from './schedule.js';
+import { parseSchedule, nextRun, describeRule, isOutbound, detectSwarm, occurrences, sanitizeRule } from './schedule.js';
 
 test('weekday morning', () => {
   const p = parseSchedule('every weekday at 8am, sum up new support tickets');
@@ -38,4 +38,15 @@ test('outbound + swarm', () => {
   assert.ok(isOutbound('send the weekly report to Ayşe'));
   assert.ok(!isOutbound('draft a weekly report'));
   assert.deepEqual(detectSwarm('as a team, plan the launch'), { swarm: true, task: 'plan the launch' });
+});
+test('sanitizeRule rebuilds numbers and drops markup', () => {
+  const parsed = parseSchedule('every 15 minutes check uptime');
+  assert.deepEqual(sanitizeRule(parsed.rule), parsed.rule);
+  assert.equal(sanitizeRule({ kind: 'minutes', every: '<svg onload=alert(1)>' }), null);
+  assert.equal(describeRule({ kind: 'minutes', every: '<svg onload=alert(1)>' }), '');
+  assert.deepEqual(sanitizeRule({ kind: 'minutes', every: 15, hour: '<b>' }), { kind: 'minutes', every: 15 });
+  assert.equal(sanitizeRule({ kind: 'days', hour: 9, minute: 0, weekdays: [1, 1, 5] }).weekdays.join(','), '1,5');
+  assert.equal(sanitizeRule({ kind: 'days', hour: 24, minute: 0, weekdays: [1] }), null);
+  assert.equal(sanitizeRule({ kind: 'hours', every: 0 }), null);
+  assert.equal(describeRule(sanitizeRule({ kind: 'minutes', every: 15 })), 'every 15 min');
 });

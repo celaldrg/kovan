@@ -20,6 +20,29 @@ export function modelChoices(cfg = {}) {
   return list;
 }
 
+/** A model id safe to place in a single argv token. Rejects flag-shaped values. */
+export function isSafeModelToken(model) {
+  return typeof model === 'string' && /^[A-Za-z0-9._:][A-Za-z0-9._:-]{0,127}$/.test(model);
+}
+
+/** Empty means "use the default". Null means the caller must reject the value. */
+export function acceptModel(model, choices) {
+  const value = String(model ?? '').trim();
+  if (!value) return '';
+  const allowed = (choices || []).map(s => String(s));
+  if (!allowed.includes(value) || !isSafeModelToken(value)) return null;
+  return value;
+}
+
+/**
+ * argv for `claude`. The prompt is written to stdin, not placed in argv.
+ * `--model=<id>` is one token so a value cannot be parsed as its own flag.
+ */
+export function cliArgs(model) {
+  if (!isSafeModelToken(model)) throw new Error('invalid model');
+  return ['-p', '--output-format', 'json', `--model=${model}`, '--disallowedTools', 'Bash,Edit,Write,MultiEdit,NotebookEdit,Task'];
+}
+
 function hasCli() {
   if (process.env.KOVAN_DEMO === '1') return false;
   const r = spawnSync(process.platform === 'win32' ? 'where' : 'which', ['claude'], { encoding: 'utf8' });
@@ -36,10 +59,9 @@ export function detectBackend() {
 const EFFORT_HINT = { low: 'Be brief; a quick pass is enough.', medium: '', high: 'Think it through carefully before answering.' };
 
 function runCli(prompt, { model, effort, tools = true, timeoutMs = 10 * 60e3 }) {
+  const args = cliArgs(model);
   return new Promise((resolve, reject) => {
-    const args = ['-p', '--output-format', 'json', '--model', model];
     // Workers may use connectors and web search, never the shell or file editing.
-    args.push('--disallowedTools', 'Bash,Edit,Write,MultiEdit,NotebookEdit,Task');
     const child = spawn('claude', args, { stdio: ['pipe', 'pipe', 'pipe'] });
     let out = '', err = '';
     const t = setTimeout(() => { child.kill('SIGTERM'); reject(new Error('timed out')); }, timeoutMs);

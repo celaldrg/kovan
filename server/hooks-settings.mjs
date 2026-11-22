@@ -1,7 +1,7 @@
 // Merge Kovan's Claude Code hooks into a settings object without dropping
-// hooks the user already has. SessionStart is a command hook because Claude
-// Code only runs command and mcp_tool handlers for that event; the command
-// forwards the same JSON to Kovan. Every other event is an HTTP hook.
+// hooks the user already has. Every Kovan hook is a command that runs
+// bin/hook-forward.mjs. The forwarder reads the per-launch token and POSTs it
+// to loopback. HTTP hooks cannot do that, because the token changes each launch.
 // PermissionRequest is never installed with onFailure "block", and a missing
 // or timed-out Kovan returns no decision so Claude Code shows its own prompt.
 import fs from 'node:fs';
@@ -35,21 +35,12 @@ export function isKovanHook(hook) {
   return false;
 }
 
-function httpHook(event, port) {
-  return {
-    type: 'http',
-    url: hookUrl(port),
-    timeout: event === 'PermissionRequest' ? 120 : 5,
-    kovan: 'live-hive',
-  };
-}
-
-function commandHook(forwarder) {
+function commandHook(forwarder, port, timeout) {
   return {
     type: 'command',
     command: 'node',
-    args: [forwarder],
-    timeout: 8,
+    args: [forwarder, '--port', String(Number(port) || 4700)],
+    timeout,
     kovan: 'live-hive',
   };
 }
@@ -69,17 +60,16 @@ function stripKovan(groups) {
 export function mergeHooks(settings, { port = 4700, forwarder }) {
   const base = settings && typeof settings === 'object' && !Array.isArray(settings) ? structuredClone(settings) : {};
   const hooks = base.hooks && typeof base.hooks === 'object' && !Array.isArray(base.hooks) ? base.hooks : {};
+  if (!forwarder) throw new Error('hook forwarder path is required');
   const next = { ...hooks };
   for (const event of HTTP_EVENTS) {
     const kept = stripKovan(next[event]);
-    kept.push({ hooks: [httpHook(event, port)] });
+    kept.push({ hooks: [commandHook(forwarder, port, event === 'PermissionRequest' ? 120 : 8)] });
     next[event] = kept;
   }
-  if (forwarder) {
-    const kept = stripKovan(next.SessionStart);
-    kept.push({ hooks: [commandHook(forwarder)] });
-    next.SessionStart = kept;
-  }
+  const keptStart = stripKovan(next.SessionStart);
+  keptStart.push({ hooks: [commandHook(forwarder, port, 8)] });
+  next.SessionStart = keptStart;
   return { ...base, hooks: next };
 }
 
@@ -108,10 +98,17 @@ function readSettings(file) {
   return { existed: true, raw, json };
 }
 
+const PRIVATE = 0o600;
+
+function tighten(file) {
+  try { fs.chmodSync(file, PRIVATE); } catch { /* Windows does not use POSIX modes. */ }
+}
+
 function backup(file, raw) {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const dest = `${file}.bak-kovan-${stamp}`;
-  fs.writeFileSync(dest, raw);
+  fs.writeFileSync(dest, raw, { mode: PRIVATE });
+  tighten(dest);
   return dest;
 }
 
@@ -119,8 +116,10 @@ function writeAtomic(file, json) {
   const dir = path.dirname(file);
   fs.mkdirSync(dir, { recursive: true });
   const tmp = path.join(dir, `.${path.basename(file)}.${process.pid}.tmp`);
-  fs.writeFileSync(tmp, JSON.stringify(json, null, 2) + '\n');
+  fs.writeFileSync(tmp, JSON.stringify(json, null, 2) + '\n', { mode: PRIVATE });
+  tighten(tmp);
   fs.renameSync(tmp, file);
+  tighten(file);
 }
 
 export function installHooks({ file, port = 4700, forwarder }) {

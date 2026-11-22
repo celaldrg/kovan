@@ -2,7 +2,8 @@
 import path from 'node:path';
 import { jsonStore, uid } from './store.mjs';
 import { readSkillShelf, skillsFor, readLessons, addLesson, looksStanding } from './knowledge.mjs';
-import { parseSchedule, describeRule, nextRun, isOutbound, detectSwarm } from '../shared/schedule.js';
+import { parseSchedule, describeRule, nextRun, isOutbound, detectSwarm, sanitizeRule } from '../shared/schedule.js';
+import { modelChoices, acceptModel, EFFORTS } from './ai.mjs';
 import { startAutopilot } from './autopilot.mjs';
 import { pickDepartment, guessDepartment } from '../shared/departments.js';
 
@@ -28,13 +29,50 @@ export function createHive({ cfg, crew, vault, ai, emit }) {
     if (x.dept && !crew.depts.some(d => d.id === x.dept) && LEGACY[x.dept]) x.dept = LEGACY[x.dept];
     delete x.comb;
   }
+  // Drop stored model/rule strings that are not on the allowlist (they were renderable HTML).
+  let scrubbedJobs = false;
+  let scrubbedRoutines = false;
+  const choices = () => modelChoices(cfg);
+  for (const x of jobs()) {
+    if (x.model) {
+      const picked = acceptModel(x.model, choices());
+      if (!picked) { x.model = ''; scrubbedJobs = true; }
+    }
+    if (x.effort && !EFFORTS.includes(x.effort)) { x.effort = ''; scrubbedJobs = true; }
+  }
+  for (const x of routines()) {
+    if (x.model) {
+      const picked = acceptModel(x.model, choices());
+      if (!picked) { x.model = ''; scrubbedRoutines = true; }
+    }
+    if (x.rule) {
+      const clean = sanitizeRule(x.rule);
+      if (!clean) {
+        x.paused = true;
+        x.rule = { kind: 'days', weekdays: [1], hour: 9, minute: 0 };
+        scrubbedRoutines = true;
+      } else if (JSON.stringify(clean) !== JSON.stringify(x.rule)) { x.rule = clean; scrubbedRoutines = true; }
+    }
+  }
+  if (scrubbedJobs) jobsDb.save();
+  if (scrubbedRoutines) routinesDb.save();
 
   const changed = () => { jobsDb.save(); emit('jobs', publicJobs()); };
   const publicJobs = () => jobs().slice(-300);
   const pulse = (type, data) => emit('pulse', { type, ...data });
   const recordRun = tokens => { const r = runsDb.get().runs; r.push({ at: Date.now(), tokens: tokens || 0 }); while (r.length > 5000) r.shift(); runsDb.save(); };
-  const resolveModel = (job, worker) => job.model || worker?.model || cfg.model || 'sonnet';
-  const resolveEffort = (job, worker) => job.effort || worker?.effort || cfg.effort || '';
+  const resolveModel = (job, worker) => {
+    const choices = modelChoices(cfg).map(String).filter(id => acceptModel(id, modelChoices(cfg)));
+    for (const candidate of [job?.model, worker?.model, cfg.model]) {
+      const picked = acceptModel(candidate || '', choices);
+      if (picked) return picked;
+    }
+    return choices[0] || 'sonnet';
+  };
+  const resolveEffort = (job, worker) => {
+    const effort = job?.effort || worker?.effort || cfg.effort || '';
+    return EFFORTS.includes(effort) ? effort : '';
+  };
 
   // ---------- prompts ----------
   function workerContext(worker, text) {
@@ -89,13 +127,17 @@ export function createHive({ cfg, crew, vault, ai, emit }) {
 
   // ---------- jobs ----------
   async function addJob({ text, dept = '', model = '', effort = '', swarm = false, at = null, routineId = null, needsOk, late = false, auto = false }) {
+    const modelPick = acceptModel(model || '', modelChoices(cfg));
+    if (modelPick == null) throw Object.assign(new Error('invalid model'), { status: 400 });
+    const effortPick = effort == null || effort === '' ? '' : String(effort);
+    if (!EFFORTS.includes(effortPick)) throw Object.assign(new Error('invalid effort'), { status: 400 });
     const picked = pickDepartment(text, crew.depts);
     if (picked) { text = picked.task; dept = picked.dept; }
     if (dept && !D(dept)) dept = '';
     const sw = detectSwarm(text);
     const task = sw.task || text;
     const job = {
-      id: uid('j'), text: task, dept, routed: dept ? 'you' : 'auto', model, effort, swarm: (swarm || sw.swarm) && cfg.swarm?.enabled !== false,
+      id: uid('j'), text: task, dept, routed: dept ? 'you' : 'auto', model: modelPick, effort: effortPick, swarm: (swarm || sw.swarm) && cfg.swarm?.enabled !== false,
       state: at && at > Date.now() ? 'scheduled' : 'queued', at: at || null, routineId, late,
       needsOk: needsOk ?? isOutbound(task), created: Date.now(), worker: null, log: [], auto,
     };
@@ -269,9 +311,13 @@ export function createHive({ cfg, crew, vault, ai, emit }) {
 
   // ---------- routines ----------
   function scheduleRoutine({ text, dept = '', rule, model = '', needsOk, start = 0, swarm = false, worker = '' }) {
+    const cleanRule = sanitizeRule(rule);
+    if (!cleanRule) throw Object.assign(new Error('invalid rule'), { status: 400 });
+    const modelPick = acceptModel(model || '', modelChoices(cfg));
+    if (modelPick == null) throw Object.assign(new Error('invalid model'), { status: 400 });
     const picked = pickDepartment(text, crew.depts);
     if (picked) { text = picked.task; dept = picked.dept; }
-    const r = { id: uid('r'), text, dept, rule, model, swarm, worker, needsOk: needsOk ?? isOutbound(text), start: start || 0, paused: false, created: Date.now(), lastRun: null };
+    const r = { id: uid('r'), text, dept, rule: cleanRule, model: modelPick, swarm, worker, needsOk: needsOk ?? isOutbound(text), start: start || 0, paused: false, created: Date.now(), lastRun: null };
     r.next = nextRun(rule, Date.now(), r.start);
     routines().push(r);
     routinesDb.save(); emit('routines', routines());
