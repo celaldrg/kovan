@@ -1,0 +1,87 @@
+# Publishes only after a GitHub release is published, or when someone runs this
+# workflow by hand. It does not run on push or on pull request.
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag that should receive the desktop archive
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  npm:
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  ghcr:
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        env:
+          EVENT: ${{ github.event_name }}
+          PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          docker build \
+            -t "ghcr.io/celaldrg/kovan:${version}" \
+            -t "ghcr.io/celaldrg/kovan:${GITHUB_SHA}" \
+            .
+          docker push "ghcr.io/celaldrg/kovan:${version}"
+          docker push "ghcr.io/celaldrg/kovan:${GITHUB_SHA}"
+          if [ "$EVENT" = "release" ] && [ "$PRERELEASE" != "true" ]; then
+            docker tag "ghcr.io/celaldrg/kovan:${version}" ghcr.io/celaldrg/kovan:latest
+            docker push ghcr.io/celaldrg/kovan:latest
+          fi
+
+  desktop:
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Build the unpacked Electron app
+        working-directory: desktop
+        run: npm ci && npm run build -- --linux dir --publish never
+      - name: Archive the desktop build
+        run: tar -C desktop/dist -czf kovan-linux.tar.gz .
+      - name: Upload to the GitHub release
+        if: github.event_name == 'release' || inputs.tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
+        run: gh release upload "$TAG" kovan-linux.tar.gz --clobber

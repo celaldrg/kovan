@@ -10,11 +10,11 @@
 
 **Claude Code, Codex, Gemini CLI, OpenCode and Aider in one live 3D hive.** See who's working, who's stuck and who needs you, and approve without hunting through terminal tabs.
 
-Local-first · replay and search · cost and budgets · approve from your phone · demo runs with zero setup
+Local-first · approval rules · audit log · replay and search · cost and budgets · approve from your phone · demo runs with zero setup
 
 [![CI](https://github.com/celaldrg/kovan/actions/workflows/ci.yml/badge.svg)](https://github.com/celaldrg/kovan/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-f5a524.svg)](LICENSE)
-[![version](https://img.shields.io/badge/version-0.3.0-2dd4bf)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.4.0-2dd4bf)](CHANGELOG.md)
 ![Node 20+](https://img.shields.io/badge/node-%3E%3D20-2dd4bf)
 ![three.js](https://img.shields.io/badge/three.js-r170-black)
 
@@ -33,7 +33,7 @@ You have sessions open in more than one coding CLI, and one of them has been sit
 <p align="center">
   <a href="assets/kovan-demo.mp4"><b>Watch the demo (MP4)</b></a>
   <br>
-  <sub>About 8 seconds from <code>npm run demo</code>: several CLIs at work, budget warnings, a runaway flag, the approval card, Allow, then Sessions. The projects are fictional.</sub>
+  <sub>About 5 seconds from <code>npm run demo</code>: several CLIs at work, budget warnings, a runaway flag, the approval card, Allow, then Sessions. The projects are fictional.</sub>
 </p>
 
 <table>
@@ -57,18 +57,51 @@ You have sessions open in more than one coding CLI, and one of them has been sit
   <tr>
     <td colspan="2" align="center"><sub><b>Replay</b> (<code>R</code>): search by CLI, project, date and status, then scrub one session. Lines are stored locally and redacted.</sub></td>
   </tr>
+  <tr>
+    <td width="50%"><img src="assets/screenshot-rules.png" alt="Rules page with a deny rule for recursive delete and a dry run that asks nothing to run"></td>
+    <td width="50%"><img src="assets/screenshot-audit.png" alt="Audit log showing a rule denial, with a control to verify the hash chain"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Rules</b> (<code>Y</code>): allow, deny, or ask. A dry run does not approve anything.</sub></td>
+    <td align="center"><sub><b>Audit</b> (<code>L</code>): every approval decision, with a hash chain you can verify.</sub></td>
+  </tr>
 </table>
 
 ---
 
 ## Install
 
+From a clone:
+
 ```bash
 git clone https://github.com/celaldrg/kovan.git
 cd kovan
 npm install
-npm start            # builds once, then http://localhost:4700
+npm start            # builds once, then http://127.0.0.1:4700
 ```
+
+The npm package is `@celaldrg/kovan`. The command name stays `kovan`. After a GitHub release publishes it:
+
+```bash
+npx @celaldrg/kovan   # starts the local server
+```
+
+`npx kovan` is a different, unscoped name and is not this package. Pull-request CI builds the package, the container, and the desktop shell. It does not publish them. Publishing runs only from a published GitHub release, or from a manual run of that workflow.
+
+### Docker
+
+The image process listens on `127.0.0.1` inside the container unless `KOVAN_HOST` is set. Docker can only forward a published port to that process when the process listens on the container network, so a published command sets `KOVAN_HOST`. Keep the host side on loopback:
+
+```bash
+docker build -t kovan .
+docker run --rm -e KOVAN_HOST=0.0.0.0 -p 127.0.0.1:4700:4700 kovan
+```
+
+`-p 4700:4700` without `127.0.0.1` opens the host port on every interface. Use `-p 127.0.0.1:4700:4700`. A published release pushes `ghcr.io/celaldrg/kovan`. The image label `org.opencontainers.image.source` is `https://github.com/celaldrg/kovan`. The default user is `kovan`, not root.
+
+### Desktop
+
+The desktop app is Electron. Its main process starts this same server with `KOVAN_HOST=127.0.0.1` and opens a window on that address. Electron fits because the server is already Node. A Tauri shell would still need Node for the server, and it would add a Rust toolchain. Release builds are attached to GitHub Releases as `kovan-linux.tar.gz`. A pull request only builds the unpacked app.
 
 Attach Kovan to Claude Code once, from this clone:
 
@@ -77,8 +110,6 @@ node bin/kovan.mjs hooks install
 ```
 
 That merges command hooks into your Claude Code user settings and writes a timestamped backup next to the file, both mode 0600. Your existing hooks stay. `node bin/kovan.mjs hooks uninstall` removes only Kovan's entries. `npm run hooks:install` and `npm run hooks:uninstall` are the same commands.
-
-Do not run `npx kovan`. The npm package name is not published by this project, so that command would download whoever owns the name.
 
 Then start a Claude Code session. Each project you work in becomes a zone, and each session becomes a bee. State comes from Claude Code hook events: `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, `Notification`, `SubagentStart`, `SubagentStop`, `Stop`, `StopFailure`, and `SessionEnd`.
 
@@ -90,7 +121,7 @@ A `PermissionRequest` turns the bee into a card: tool, command, and a diff for e
 
 The **Needs you** queue is sorted by how long the prompt has been waiting. A new card plays a short chime. Turn on browser notifications with **Alerts** on the card.
 
-Fail-safe: Kovan never auto-allows. The hook is installed without `onFailure: "block"`. If Kovan is stopped, the request fails to connect, or the wait times out, Claude Code falls back to its normal terminal prompt.
+Fail-safe: the hook is installed without `onFailure: "block"`. If Kovan is stopped, the request fails to connect, or the wait times out, Claude Code falls back to its normal terminal prompt. An approval rule can allow or deny before the card is shown. A missing rules file asks. A rules file that does not parse also asks, and it never auto-allows. A spent budget still denies, including when a rule says allow.
 
 ### No hooks yet
 
@@ -107,6 +138,16 @@ Aider has no approval hook. Kovan reads `.aider.chat.history.md` from `KOVAN_AID
 ### Replay and search
 
 Kovan records prompts, tool calls, approvals and cost under the data directory, in mode `0600` files. Press **R** or the search button to filter by CLI, project, date and status, then scrub one session. Set `KOVAN_REPLAY=0` to turn recording off. `replay.retentionDays` (default 30) drops older lines. Obvious secrets are redacted before a line is stored. See [SECURITY.md](SECURITY.md).
+
+### Approval rules
+
+Rules live in `data/rules.json` (or `$KOVAN_DATA/rules.json`), mode `0600`, schema version 1. Copy `rules.example.json` there when you want a starting point. Kovan does not load the example by itself.
+
+Each rule is `allow`, `deny`, or `ask`, and can match CLI, project, tool name, a command glob, a path glob, and cost so far. A higher `priority` number is checked first. The first priority that matches anything wins. Inside that priority, deny beats allow, and allow beats ask. If nothing matches, Kovan asks. Globs use `*` and `?` only. They are not regular expressions.
+
+Open **Rules** (`Y`) to add, reorder, and dry-run a sample event. A dry run does not approve a tool and does not write the audit log. `kovan audit verify` checks the decision log. `kovan audit export --since 2026-04-01` prints JSONL.
+
+If the rules file is missing, Kovan asks. If it fails to parse or fails validation, Kovan asks and will not auto-allow until the file is valid again. Reset it from the Rules page.
 
 ### Demo, zero setup
 
@@ -161,10 +202,13 @@ Web Push uses a VAPID key generated on this machine and stored mode `0600` in th
 | `npm start` | Build if needed, then serve http://localhost:4700 |
 | `npm run dev` | API + Vite (http://localhost:5180) |
 | `npm run demo` | Live hive with simulated sessions, no Claude login |
-| `npm test` | Auth, hooks, schedules, permissions, settings merge |
+| `npm test` | Auth, hooks, rules, audit chain, permissions, settings merge |
 | `npm run build` | Type-check and build the web app |
+| `npx @celaldrg/kovan` | Start the server once the package is published |
 | `node bin/kovan.mjs hooks install` | Merge Kovan's hooks into Claude Code settings |
 | `node bin/kovan.mjs hooks uninstall` | Remove Kovan's hooks, leave yours |
+| `node bin/kovan.mjs audit verify` | Check the approval hash chain |
+| `node bin/kovan.mjs audit export --since <date>` | Print audit JSONL from that date |
 
 `--settings <file>` and `--port <n>` override the settings path and the hook URL. The default file is `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`).
 
@@ -174,6 +218,8 @@ Web Push uses a VAPID key generated on this machine and stored mode `0600` in th
 |---|---|
 | `A` | Sessions (live) or Agents (company) |
 | `R` | Replay and search |
+| `Y` | Approval rules |
+| `L` | Audit log |
 | `1`–`9` / `0` | Fly to a zone / back to the overview |
 | `D` `V` `K` `B` | Departments, vault, calendar, board (company mode) |
 | `T` / `F` | Theme / focus |
@@ -200,7 +246,8 @@ Web Push uses a VAPID key generated on this machine and stored mode `0600` in th
     "gemini": { "models": ["gemini-2.5-pro", "gemini-2.5-flash"] },
     "ollama": { "models": ["llama3.2"], "host": "http://127.0.0.1:11434" }
   },
-  "replay": { "enabled": true, "retentionDays": 30 }
+  "replay": { "enabled": true, "retentionDays": 30 },
+  "audit": { "retentionDays": 90 }
 }
 ```
 
@@ -218,6 +265,8 @@ Claude / Codex / Gemini --command--> hook-forward --POST + token--> /api/hooks -
 OpenCode service (loopback only) --permission list--> same queue, reply only after a click
 Gemini / OpenCode / Aider logs --> read-only bees when no hook or service is available
 live events --> data/replay/*.jsonl (0600, redacted) --> Replay search
+permission --> rules.json (0600) --> allow, deny, or ask
+decision --> data/audit.jsonl (0600, hash chain, redacted)
 ```
 
 Company mode still runs through `server/hive.mjs` (routing, swarms, approvals, routines) and the vault under `vault/`. A live session is not written into the vault. The timeline is a separate store under the data directory.
@@ -230,7 +279,8 @@ Kovan is a local dashboard for a process that can approve shell commands. The de
 - Each launch writes a new token to a mode `0600` file in the data directory and requires it as `x-kovan-token` on `/api/*`, except the phone routes that use a paired device credential instead. The installed hooks read the launch token. The desktop page receives it in a meta tag only when the request `Host` is loopback. The phone page never receives it.
 - `Host` must be loopback (or a name you allowed). State-changing requests must send `Content-Type: application/json`. `Origin`, when present, must be this server. There is no permissive CORS header.
 - Model, effort, department, and schedule rules are checked against allowlists. Provider model ids are allowlisted too. The Claude CLI receives `--model=<id>` as one argument. The prompt is written to stdin. API keys are read from the environment and are not written back.
-- Replay files are mode `0600`. Recording can be turned off. Retention is configurable. Obvious secrets are redacted before storage. Ollama calls stay on loopback unless you set `KOVAN_OLLAMA_ALLOW_REMOTE=1`.
+- Replay files are mode `0600`. Recording can be turned off. Retention is configurable. Obvious secrets are redacted before storage. The audit log uses the same redaction, is append-only, and chains a hash so an edited line is detectable. Ollama calls stay on loopback unless you set `KOVAN_OLLAMA_ALLOW_REMOTE=1`.
+- Approval rules are local. The default is ask. A rules file that does not parse fails closed to ask and does not auto-allow. Deny beats allow when both match at the same priority. A budget stop still denies.
 - The web app escapes text that it inserts as HTML and sends a Content-Security-Policy. Script sources are same-origin files only.
 - Oversized bodies get `413`. Unexpected failures return a generic message; details stay in the server log.
 - Claude Code hooks are installed without `onFailure: "block"`. A missed Claude or Codex `PermissionRequest` is not an allow: each CLI shows its own prompt. Gemini `BeforeTool` is the opposite in Gemini's own runner, so a missed one is an explicit deny and exit 2. A budget limit denies the permission request. A phone timeout does not allow it.
@@ -240,9 +290,9 @@ See [SECURITY.md](SECURITY.md) for reporting and the threat model.
 
 ## FAQ
 
-**Why not `npx kovan`?** That npm name is not this project's. Install from a clone and run `node bin/kovan.mjs`.
+**Why not `npx kovan`?** This package is `@celaldrg/kovan`. The unscoped name is not this project. After a release publishes the package, `npx @celaldrg/kovan` starts it. Until then, run `npm start` from a clone.
 
-**Does Kovan auto-allow a permission prompt?** No. Claude Code and Codex `PermissionRequest` print nothing and leave the CLI's own prompt. Gemini `BeforeTool` gets an explicit deny and exit 2, because a silent exit would let the tool run. Aider never receives an approval from Kovan. A phone that never answers does not allow the tool either.
+**Does Kovan auto-allow a permission prompt?** Only when a valid rule says allow, and a spent budget still denies that. The default is ask. A broken rules file never auto-allows. Claude Code and Codex `PermissionRequest` print nothing and leave the CLI's own prompt when nobody, and no rule, answers. Gemini `BeforeTool` gets an explicit deny and exit 2, because a silent exit would let the tool run. Aider never receives an approval from Kovan. A phone that never answers does not allow the tool either.
 
 **Where do the dollar figures come from?** From reported token buckets and the dated rate card. Demo mode labels its fixture. Unknown models, and tools that did not report usage, show cost unknown. Ollama is $0.
 
@@ -254,7 +304,7 @@ See [SECURITY.md](SECURITY.md) for reporting and the threat model.
 
 ## Türkçe özet
 
-**Kovan**, Claude Code, Codex, Gemini CLI, OpenCode ve Aider oturumlarını tek bir canlı 3B kovanda gösterir. Her oturum bir arı, her proje bir bölgedir. Kanca destekleyen araçlarda izin kartı çıkar; Aider ve yalnızca günlükten okunan oturumlar salt okunurdur. Kovan kapalıysa ya da süre dolarsa araç kendi sorusuna döner, kendiliğinden izin vermez. Oturum geçmişi yerelde tutulur ve aranabilir.
+**Kovan**, Claude Code, Codex, Gemini CLI, OpenCode ve Aider oturumlarını tek bir canlı 3B kovanda gösterir. Her oturum bir arı, her proje bir bölgedir. Yerel kurallar izin verebilir, reddedebilir ya da sorabilir. Kurallar dosyası okunamazsa Kovan sorar ve kendiliğinden izin vermez. Kararlar hash zincirli bir günlükte durur. Paket adı `@celaldrg/kovan`.
 
 ```bash
 npm install && npm start

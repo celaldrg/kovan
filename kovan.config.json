@@ -17,6 +17,7 @@
     "ollama": { "models": ["llama3.2"], "host": "http://127.0.0.1:11434" }
   },
   "replay": { "enabled": true, "retentionDays": 30 },
+  "audit": { "retentionDays": 90 },
   "connectors": { "allow": [], "deny": [] },
   "swarm": { "enabled": true, "max": 3 },
   "phone": { "enabled": false, "origin": "" },

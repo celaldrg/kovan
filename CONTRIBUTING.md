@@ -24,7 +24,7 @@ node bin/kovan.mjs hooks install
 node bin/kovan.mjs hooks uninstall
 ```
 
-The npm name `kovan` is not published by this project.
+The npm package is `@celaldrg/kovan`. The bin name is `kovan`. `npm start` and `node bin/kovan.mjs` start the server from a clone. Publishing is the release workflow, not a pull request.
 
 ## Tests
 

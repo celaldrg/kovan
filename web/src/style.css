@@ -275,6 +275,7 @@ body.light .msg { background: rgba(255, 255, 255, .55); }
 .sheet.open { opacity: 1; transform: none; pointer-events: auto; }
 .sheet > .close { position: absolute; top: 12px; right: 12px; z-index: 3; }
 #sheetBody { flex: 1; display: flex; flex-direction: column; min-height: 0; position: relative; }
+#sheet[data-kind="rules"] #sheetBody, #sheet[data-kind="audit"] #sheetBody { overflow: auto; }
 .sheet-head { display: flex; align-items: center; gap: 14px; padding: 16px 60px 14px 22px; border-bottom: 1px solid var(--line); }
 .sheet-head h2 { margin: 0; font: 600 18px var(--f-display); letter-spacing: -0.01em; }
 .sheet-head .muted { color: var(--muted); font-size: 12px; }
@@ -563,3 +564,26 @@ body:not(.ui-on) .cost-banner, body:not(.ui-on) .drawer, body:not(.ui-on) .budge
 .budget-alert .glass { max-width: 420px; padding: 18px; border-radius: 16px; }
 .budget-alert h2 { margin: 0 0 8px; font: 600 20px var(--f-display); }
 .budget-alert p { margin: 0 0 10px; color: var(--text-2); }
+
+.rules-scroll { flex: 1; min-height: 0; overflow: auto; }
+.rules-list { display: flex; flex-direction: column; gap: 8px; padding: 14px 22px 4px; }
+.rule { border: 1px solid var(--hair); border-radius: 12px; padding: 10px 12px; background: rgba(0, 0, 0, .16); }
+.rule header { display: flex; gap: 10px; align-items: baseline; }
+.rule header span, .rule header em { color: var(--muted); font-style: normal; font-size: 12px; }
+.rule p { margin: 6px 0 0; color: var(--text-2); }
+.rule .act { font: 700 11px var(--f-mono); letter-spacing: .04em; text-transform: uppercase; }
+.rule.allow .act { color: var(--ok); }
+.rule.deny .act, .rule.unanswered .act { color: var(--danger); }
+.rule.ask .act, .rule.anchor .act { color: var(--amber); }
+.rule-acts { display: flex; gap: 6px; margin-top: 8px; }
+.rules-form { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 8px 22px 16px; padding-top: 8px; border-top: 1px solid var(--line); }
+.rules-form h3, .rules-form button, .rules-form .rules-error, .rules-form .rule-result { grid-column: 1 / -1; }
+.rules-form h3 { margin: 4px 0 0; font: 600 13px var(--f-display); }
+.rules-form label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--muted); }
+.rules-form input, .rules-form select { border: 1px solid var(--hair); border-radius: 8px; padding: 7px 8px; background: transparent; color: var(--text); }
+.rules-fail, .rules-error { margin: 0 22px; color: var(--danger); }
+.rule-result { margin: 0 22px 8px; color: var(--text-2); }
+.rule-result.allow { color: var(--ok); }
+.rule-result.deny { color: var(--danger); }
+.rule-result.ask { color: var(--amber); }
+@media (max-width: 800px) { .rules-form { grid-template-columns: 1fr 1fr; } }

@@ -1,6 +1,6 @@
 // Kovan server: JSON API + server-sent events + the built web app from dist/.
 import path from 'node:path';
-import { loadConfig, loadCrew } from './config.mjs';
+import { loadConfig, loadCrew, ROOT } from './config.mjs';
 import { createVault } from './vault.mjs';
 import { createAI, detectBackend } from './ai.mjs';
 import { createHive } from './hive.mjs';
@@ -10,6 +10,8 @@ import { startLogTail } from './jsonl-tail.mjs';
 import { startAgentWatch } from './agents-watch.mjs';
 import { startLiveDemo } from './live-demo.mjs';
 import { createReplay } from './replay.mjs';
+import { createRules } from './rules.mjs';
+import { createAudit } from './audit.mjs';
 import { createApp } from './app.mjs';
 import { allowedHostnames, publicReach, resolveBind } from './guard.mjs';
 import { launchToken } from './token.mjs';
@@ -74,10 +76,23 @@ const replay = createReplay({
   retentionDays: replayDays,
 });
 if (replayOn) replay.purge();
+const rulesFile = process.env.KOVAN_RULES_FILE
+  ? path.resolve(ROOT, process.env.KOVAN_RULES_FILE)
+  : (cfg.rules?.file ? path.resolve(ROOT, cfg.rules.file) : path.join(cfg.dataDir, 'rules.json'));
+const rules = createRules({ file: rulesFile });
+const auditDays = Number(process.env.KOVAN_AUDIT_DAYS ?? cfg.audit?.retentionDays ?? 90);
+const audit = createAudit({
+  file: path.join(cfg.dataDir, 'audit.jsonl'),
+  headFile: path.join(cfg.dataDir, 'audit.head'),
+  retentionDays: Number.isFinite(auditDays) && auditDays >= 0 && auditDays <= 36500 ? auditDays : 90,
+});
+audit.purge();
 const live = createLive({
   emit: emitAll,
   gate: ledger.gate(),
+  rules,
   onRecord(event) { replay.append(event); },
+  onAudit(event) { audit.append(event); },
 });
 if (demo) {
   startLiveDemo(live, replay);
@@ -106,7 +121,7 @@ const bind = resolveBind(process.env);
 const token = launchToken(path.join(cfg.dataDir, 'token'));
 const server = createApp({
   cfg, crew, vault, ai, hive, live, token, clients,
-  phone, ledger, replay, reach,
+  phone, ledger, replay, rules, audit, reach,
   allowedHosts: allowedHostnames(process.env, bind.host),
   getConnectors: () => connectors,
   refreshConnectors: async () => {
@@ -118,7 +133,8 @@ const server = createApp({
 
 const shownHost = bind.host.includes(':') ? `[${bind.host}]` : bind.host;
 server.listen(cfg.port, bind.host, () => {
-  console.log(`\n  Kovan · ${cfg.name}\n  http://${shownHost}:${cfg.port}\n  live hive: ${demo ? 'demo sessions' : 'hooks + session logs'}\n  backend: ${ai.backend}${ai.backend === 'demo' ? ' (company mode is simulated — install Claude Code or set ANTHROPIC_API_KEY for real runs)' : ''}\n  vault: ${cfg.vaultDir} (${vault.size()} notes)\n  token: 0600 file in the data directory (not printed)\n  costs: rate card ${ledger.table.dated}\n  phone: ${phone.enabled ? 'opt-in on' : 'off'}\n`);
+  const rulesState = rules.load();
+  console.log(`\n  Kovan · ${cfg.name}\n  http://${shownHost}:${cfg.port}\n  live hive: ${demo ? 'demo sessions' : 'hooks + session logs'}\n  backend: ${ai.backend}${ai.backend === 'demo' ? ' (company mode is simulated — install Claude Code or set ANTHROPIC_API_KEY for real runs)' : ''}\n  vault: ${cfg.vaultDir} (${vault.size()} notes)\n  token: 0600 file in the data directory (not printed)\n  costs: rate card ${ledger.table.dated}\n  phone: ${phone.enabled ? 'opt-in on' : 'off'}\n  rules: ${rulesState.status}${rulesState.status === 'invalid' ? ' (asking, nothing is auto-allowed)' : ''}\n  audit: 0600 hash chain in the data directory\n`);
   if (phone.enabled && !phone.origin) {
     console.warn('  Phone pairing is on, but KOVAN_PUBLIC_ORIGIN is empty.');
     console.warn('  A phone cannot open 127.0.0.1. Set the origin to a LAN address or a tunnel you run.\n');

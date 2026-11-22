@@ -1,0 +1,13 @@
+.git
+.github
+node_modules
+desktop/node_modules
+desktop/dist
+data
+dist
+assets
+shots
+*.md
+**/*.test.js
+**/*.test.mjs
+**/*.test.cjs

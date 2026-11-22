@@ -23,6 +23,8 @@ import { parseSchedule, describeRule, isOutbound, detectSwarm } from '../../shar
 import { pickDepartment, guessDepartment } from '../../shared/departments.js';
 import { liveCrew, paintQueue, paintPermit, paintSessions, noteNewPermits, permitCard } from './live-view';
 import { paintReplay } from './replay-view';
+import { paintRules } from './rules-view';
+import { paintAudit } from './audit-view';
 import { cliLabel, costLabel } from './cli-label';
 import { money, paintBanner, paintDrawer, paintMeter, type PhoneDevice } from './costs-view';
 import type { State, Job, ChatMsg, Pulse, Routine, Dept, LiveSnap, CostSummary } from './types';
@@ -30,7 +32,7 @@ import type { State, Job, ChatMsg, Pulse, Routine, Dept, LiveSnap, CostSummary }
 const app = document.getElementById('app')!;
 app.innerHTML = `
   <div class="splash" id="splash"><div class="splash-grid"></div><div class="splash-in">
-    <div class="sp-brand">${mark(44, 'sp')}<div class="splash-word">${wordmark()}</div><span class="sp-ver">v0.3.0</span></div>
+    <div class="sp-brand">${mark(44, 'sp')}<div class="splash-word">${wordmark()}</div><span class="sp-ver">v0.4.0</span></div>
     <div class="sp-kicker">Live hive for coding agents</div>
     <h1 class="sp-title">Every session,<br><em>in one living hive.</em></h1>
     <ul class="sp-steps" id="spSteps"><li style="--i:0"><i></i><span>Indexing the knowledge vault</span></li><li style="--i:1"><i></i><span>Bringing agents online</span></li><li style="--i:2"><i></i><span>Routing engine ready</span></li></ul>
@@ -52,6 +54,8 @@ app.innerHTML = `
       <button class="modebtn" id="modeBtn" type="button" title="Switch between the live hive and company mode">Company</button>
       <div class="meter" id="meter" title="Spend from reported token usage"><div><b id="mSpend">$0</b><small>today</small></div><div><b id="mBudget">—</b><small>budget</small></div></div>
       <button class="ibtn" id="replayBtn" type="button" title="Replay and search (R)">${icon('Search', 17)}</button>
+      <button class="ibtn" id="rulesBtn" type="button" title="Approval rules (Y)">${icon('Shield', 17)}</button>
+      <button class="ibtn" id="auditBtn" type="button" title="Audit log (L)">${icon('ScrollText', 17)}</button>
       <button class="ibtn" id="costBtn" type="button" title="Costs, budgets, and phone approvals">${icon('Coins', 17)}</button>
       <button class="ibtn" data-k="t" title="Theme (T)">${icon('SunMoon', 17)}</button>
       <button class="ibtn" data-k="f" title="Focus mode (F)">${icon('Focus', 17)}</button>
@@ -530,6 +534,8 @@ async function openSheet(kind: string) {
   if (kind === 'departments') paintDepartments(body);
   if (kind === 'agents') { if (mode === 'live') paintSessions(body, liveSnap, id => { closeSheet(); openLiveBee(id); }); else paintAgents(body); }
   if (kind === 'replay') await paintReplay(body);
+  if (kind === 'rules') await paintRules(body);
+  if (kind === 'audit') await paintAudit(body);
 }
 function closeSheet() { sheet?.stop?.(); sheet = null; $('sheet').classList.remove('open'); setNav('hive'); setTimeout(() => { if (!sheet) $('sheetBody').innerHTML = ''; }, 300); }
 $('sheetClose').onclick = closeSheet;
@@ -554,6 +560,8 @@ function key(k: string) {
   if (k === 'd') return sheet?.kind === 'departments' ? closeSheet() : openSheet('departments');
   if (k === 'a') return sheet?.kind === 'agents' ? closeSheet() : openSheet('agents');
   if (k === 'r') return sheet?.kind === 'replay' ? closeSheet() : openSheet('replay');
+  if (k === 'y') return sheet?.kind === 'rules' ? closeSheet() : openSheet('rules');
+  if (k === 'l') return sheet?.kind === 'audit' ? closeSheet() : openSheet('audit');
   if (k === 't') return toggleTheme();
   if (k === 'f') return toggleFocus();
 }
@@ -944,6 +952,8 @@ function openDrawer() {
   });
 }
 $('replayBtn').onclick = () => { if (sheet?.kind === 'replay') closeSheet(); else openSheet('replay'); };
+$('rulesBtn').onclick = () => { if (sheet?.kind === 'rules') closeSheet(); else openSheet('rules'); };
+$('auditBtn').onclick = () => { if (sheet?.kind === 'audit') closeSheet(); else openSheet('audit'); };
 $('costBtn').onclick = async () => {
   if ($('drawer').classList.contains('on')) { $('drawer').classList.remove('on'); return; }
   try { devices = (await get<{ devices: PhoneDevice[] }>('/api/phone/devices')).devices; } catch { devices = []; }

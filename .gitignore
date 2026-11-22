@@ -1,5 +1,8 @@
 node_modules/
 dist/
+shots/
+desktop/node_modules/
+desktop/dist/
 data/
 *.local.json
 vault/Kovan/outputs/

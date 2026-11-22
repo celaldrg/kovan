@@ -1,0 +1,12 @@
+*.test.js
+*.test.mjs
+*.test.cjs
+fixtures
+scripts
+web
+desktop
+.github
+assets
+shots
+Dockerfile
+.dockerignore

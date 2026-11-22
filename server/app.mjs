@@ -10,6 +10,7 @@ import { readUsage } from './usage.mjs';
 import { checkDept, checkEffort, checkModel, checkRule } from './input.mjs';
 import { tokenMatches } from './token.mjs';
 import { injectLaunchToken } from './page-token.mjs';
+import { publicView } from './rules.mjs';
 import {
   CONTENT_SECURITY_POLICY, hostAllowed, isJsonContentType, originAllowed, parseHostHeader, readBody, resolveStatic,
 } from './guard.mjs';
@@ -50,6 +51,8 @@ export function createApp({
   phone = null,
   ledger = null,
   replay = null,
+  rules = null,
+  audit = null,
   reach = null,
 }) {
   const baseHeaders = {
@@ -149,7 +152,7 @@ export function createApp({
     let actual = behavior;
     const card = live.snapshot().queue.find(item => item.id === requestId);
     if (actual === 'allow' && card && ledger?.blockPermission?.({ id: card.sessionId, project: card.project })?.level === 'stop') actual = 'deny';
-    const ok = live.answer(requestId, actual);
+    const ok = live.answer(requestId, actual, { actor: 'phone' });
     if (!ok) return send(res, 409, { error: 'request closed' });
     return send(res, 200, { ok: true, behavior: actual });
   }
@@ -217,6 +220,30 @@ export function createApp({
           if (!replay) return send(res, 200, { enabled: false, events: [] });
           return send(res, 200, { enabled: replay.enabled, events: replay.timeline(url.searchParams.get('id') || '') });
         }
+        if (p === '/api/rules' && req.method === 'GET') {
+          if (!rules) return send(res, 200, { version: 1, status: 'absent', error: '', rules: [] });
+          return send(res, 200, publicView(rules.load()));
+        }
+        if (p === '/api/audit' && req.method === 'GET') {
+          if (!audit) return send(res, 200, { ok: true, events: [] });
+          const q = url.searchParams;
+          return send(res, 200, {
+            ok: audit.verify().ok,
+            events: audit.search({
+              q: q.get('q') || '',
+              actor: q.get('actor') || '',
+              decision: q.get('decision') || '',
+              cli: q.get('cli') || '',
+              project: q.get('project') || '',
+              since: q.get('since') || '',
+            }).slice(-300),
+          });
+        }
+        if (p === '/api/audit/verify' && req.method === 'GET') {
+          if (!audit) return send(res, 200, { ok: true, checked: 0, error: '' });
+          const result = audit.verify();
+          return send(res, 200, { ok: result.ok, error: result.error || '', checked: result.checked, seq: result.seq || 0 });
+        }
         if (p === '/api/phone/pending' && req.method === 'GET') {
           const pending = phoneQueue(req);
           return send(res, pending.status, pending.body);
@@ -270,8 +297,35 @@ export function createApp({
           if (p === '/api/live/answer') {
             const id = String(body.id || '');
             const behavior = String(body.behavior || '');
-            const ok = live.answer(id, behavior);
+            const ok = live.answer(id, behavior, { actor: 'desktop' });
             return send(res, ok ? 200 : 404, { ok });
+          }
+          if (p === '/api/rules/test') {
+            if (!rules) return send(res, 404, { error: 'not found' });
+            const event = body.event && typeof body.event === 'object' && !Array.isArray(body.event) ? body.event : {};
+            const result = rules.evaluate({
+              cli: String(event.cli || ''),
+              project: String(event.project || '').slice(0, 200),
+              tool: String(event.tool || '').slice(0, 200),
+              command: String(event.command || '').slice(0, 2000),
+              path: String(event.path || '').slice(0, 2000),
+              costSoFar: event.costSoFar == null || event.costSoFar === '' ? null : Number(event.costSoFar),
+            });
+            return send(res, 200, {
+              action: result.action,
+              ruleId: result.ruleId,
+              failed: !!result.failed,
+              status: result.status,
+              error: result.error || '',
+              override: !!result.override,
+              matchedIds: result.matchedIds || [],
+            });
+          }
+          if (p === '/api/rules') {
+            if (!rules) return send(res, 404, { error: 'not found' });
+            const saved = rules.mutate(body);
+            if (saved.error) return send(res, saved.error === 'rules file is invalid' ? 409 : 400, { error: saved.error });
+            return send(res, 200, saved);
           }
           if (p === '/api/jobs') {
             const text = String(body.text || '').trim();
