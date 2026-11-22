@@ -91,7 +91,8 @@ try {
   });
   await clearQueue();
   await page.waitForFunction(() => !document.querySelector('#permit.on'), { timeout: 8000 });
-  await sleep(400);
+  await sleep(600);
+  await page.screenshot({ path: path.resolve('assets/screenshot-hive.png') });
 
   const client = await page.createCDPSession();
   const grabbed = [];
@@ -107,7 +108,9 @@ try {
   await sleep(5500);
   raisePermission();
   await page.waitForSelector('#permit.on header b', { timeout: 8000 });
-  await sleep(2800);
+  await sleep(800);
+  await page.screenshot({ path: path.resolve('assets/screenshot-approval.png') });
+  await sleep(1800);
   await page.evaluate(() => document.querySelector('#permit header b')?.click());
   await page.waitForSelector('#chat.open [data-go="allow"]', { timeout: 8000 });
   await sleep(2800);
@@ -120,7 +123,21 @@ try {
   await page.evaluate(() => document.activeElement && document.activeElement.blur());
   await page.keyboard.press('a');
   await page.waitForSelector('#sheet.open .acard', { timeout: 8000 });
-  await sleep(3200);
+  await sleep(800);
+  await page.screenshot({ path: path.resolve('assets/screenshot-sessions.png') });
+  await sleep(1600);
+  await page.keyboard.press('Escape');
+  await sleep(300);
+  await page.keyboard.press('r');
+  await page.waitForSelector('#replayForm', { timeout: 8000 });
+  await page.type('#replayQ', 'dock');
+  await page.click('#replayForm button[type="submit"]');
+  await page.waitForFunction(() => /dock/i.test(document.querySelector('.replay-hit p')?.textContent || ''), { timeout: 8000 });
+  await page.click('.replay-hit');
+  await page.waitForSelector('.replay-scrub input', { timeout: 8000 });
+  await sleep(500);
+  await page.screenshot({ path: path.resolve('assets/screenshot-replay.png') });
+  await sleep(1200);
 
   await client.send('Page.stopScreencast');
   await sleep(300);
@@ -150,6 +167,13 @@ try {
   copyStill(Math.max(0, (kept.at(-1)?.t || 0) - 1200), 'still-sessions.jpg');
   fs.writeFileSync(path.join(out, 'frames.json'), JSON.stringify({ frames: n, seconds: Number(elapsed.toFixed(2)), raw: grabbed.length, kept }, null, 2));
   console.log(`captured ${n} frames (${grabbed.length} raw) over ${elapsed.toFixed(1)}s in ${out}`);
+  const { spawnSync } = await import('node:child_process');
+  const gif = path.resolve('assets/kovan-demo.gif');
+  const mp4 = path.resolve('assets/kovan-demo.mp4');
+  const palette = path.join(framesDir, 'palette.png');
+  spawnSync('ffmpeg', ['-y', '-framerate', '8', '-i', path.join(framesDir, 'f%03d.jpg'), '-vf', 'scale=960:-1:flags=lanczos,palettegen', palette], { stdio: 'inherit' });
+  spawnSync('ffmpeg', ['-y', '-framerate', '8', '-i', path.join(framesDir, 'f%03d.jpg'), '-i', palette, '-lavfi', 'scale=960:-1:flags=lanczos [x]; [x][1:v] paletteuse', gif], { stdio: 'inherit' });
+  spawnSync('ffmpeg', ['-y', '-framerate', '8', '-i', path.join(framesDir, 'f%03d.jpg'), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', mp4], { stdio: 'inherit' });
   void pendingHook;
   await browser.close();
 } catch (e) { console.log('FAILED', e); process.exitCode = 1; }

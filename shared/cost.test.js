@@ -6,7 +6,7 @@ import { budgetLevel, periodStart } from './budget.js';
 import { detectRunaway } from './runaway.js';
 
 test('cost math uses each reported bucket and the dated table', () => {
-  assert.equal(PRICE_TABLE.dated, '2026-11-09');
+  assert.equal(PRICE_TABLE.dated, '2026-11-22');
   const priced = priceUsage({
     input_tokens: 1_000_000,
     output_tokens: 1_000_000,
@@ -15,7 +15,7 @@ test('cost math uses each reported bucket and the dated table', () => {
   }, 'claude-sonnet-4-5');
   assert.equal(priced.ok, true);
   assert.equal(priced.model, 'claude-sonnet-4-5');
-  assert.equal(priced.dated, '2026-11-09');
+  assert.equal(priced.dated, '2026-11-22');
   // 3 + 15 + 0.30 + 3.75 + 6
   assert.ok(Math.abs(priced.usd - 28.05) < 1e-9);
   const alias = priceUsage({ input_tokens: 2_000_000, output_tokens: 0 }, 'sonnet');

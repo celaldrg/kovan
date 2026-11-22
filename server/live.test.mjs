@@ -106,6 +106,26 @@ test('a spent budget denies the permission request instead of holding or allowin
   assert.equal(live.answer('missing', 'allow'), false);
 });
 
+test('Gemini and Codex approvals time out to an empty decision', async () => {
+  const live = createLive({ permissionWaitMs: 20 });
+  const gemini = await live.handleHook({
+    session_id: 'gem_atlas', cwd: '/work/atlas-notes', hook_event_name: 'BeforeTool',
+    tool_name: 'run_shell_command', tool_input: { command: 'npm test' },
+  }, { cli: 'gemini' });
+  assert.deepEqual(gemini, {});
+  const codexLive = createLive({ permissionWaitMs: 2000 });
+  const pending = codexLive.handleHook({
+    session_id: 'codex_harbor', cwd: '/work/harbor-docs', hook_event_name: 'PermissionRequest',
+    tool_name: 'Bash', tool_input: { command: 'git status' },
+  }, { cli: 'codex' });
+  const card = codexLive.snapshot().queue[0];
+  assert.equal(card.always, false);
+  assert.equal(codexLive.answer(card.id, 'always'), true);
+  const body = await pending;
+  assert.equal(body.hookSpecificOutput.decision.behavior, 'allow');
+  assert.equal(body.hookSpecificOutput.decision.updatedPermissions, undefined);
+});
+
 test('allow is turned into a denial when the budget is reached while a card is open', async () => {
   let stop = false;
   const live = createLive({

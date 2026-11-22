@@ -8,13 +8,13 @@
 
 # ⬡ Kovan
 
-**All your Claude Code and Codex sessions in one live 3D hive.** See who's working, who's stuck and who needs you, and approve without hunting through terminal tabs.
+**Claude Code, Codex, Gemini CLI, OpenCode and Aider in one live 3D hive.** See who's working, who's stuck and who needs you, and approve without hunting through terminal tabs.
 
-Local-first · cost and budgets · approve from your phone · demo runs with zero setup
+Local-first · replay and search · cost and budgets · approve from your phone · demo runs with zero setup
 
 [![CI](https://github.com/celaldrg/kovan/actions/workflows/ci.yml/badge.svg)](https://github.com/celaldrg/kovan/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-f5a524.svg)](LICENSE)
-[![version](https://img.shields.io/badge/version-0.2.0-2dd4bf)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.3.0-2dd4bf)](CHANGELOG.md)
 ![Node 20+](https://img.shields.io/badge/node-%3E%3D20-2dd4bf)
 ![three.js](https://img.shields.io/badge/three.js-r170-black)
 
@@ -22,7 +22,7 @@ Local-first · cost and budgets · approve from your phone · demo runs with zer
 
 ---
 
-You have four Claude Code sessions open, and one of them has been sitting on a permission prompt for ten minutes. The terminal tabs all look the same. Kovan puts every session on one hive: a bee per session, a zone per project, and a card the moment something is waiting on you.
+You have sessions open in more than one coding CLI, and one of them has been sitting on a permission prompt. The terminal tabs all look the same. Kovan puts every session on one hive: a bee per session, a zone per project, and a card the moment something is waiting on you.
 
 ## Demo
 
@@ -33,7 +33,7 @@ You have four Claude Code sessions open, and one of them has been sitting on a p
 <p align="center">
   <a href="assets/kovan-demo.mp4"><b>Watch the demo (MP4)</b></a>
   <br>
-  <sub>About 20 seconds from <code>npm run demo</code>: sessions at work, budget warnings, a runaway flag, the approval card, Allow, then Sessions. The projects are fictional.</sub>
+  <sub>About 20 seconds from <code>npm run demo</code>: several CLIs at work, budget warnings, a runaway flag, the approval card, Allow, then Sessions. The projects are fictional.</sub>
 </p>
 
 <table>
@@ -49,7 +49,13 @@ You have four Claude Code sessions open, and one of them has been sitting on a p
   </tr>
   <tr>
     <td align="center"><sub><b>Needs you</b>: tool, command and diff. Allow, Deny, or Always allow.</sub></td>
-    <td align="center"><sub><b>Sessions</b> (<code>A</code>): every bee, grouped by project.</sub></td>
+    <td align="center"><sub><b>Sessions</b> (<code>A</code>): every bee, grouped by project and CLI.</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="assets/screenshot-replay.png" alt="Replay search for a dock note, with a scrubber through the stored timeline"></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><sub><b>Replay</b> (<code>R</code>): search by CLI, project, date and status, then scrub one session. Lines are stored locally and redacted.</sub></td>
   </tr>
 </table>
 
@@ -90,7 +96,11 @@ Fail-safe: Kovan never auto-allows. The hook is installed without `onFailure: "b
 
 If the hooks are not installed, Kovan tails Claude Code session logs under the Claude config directory and, when present, Codex rollout logs. That view is inferred from the transcript, not exact. A session that has reported a hook is never overwritten by the log. Demo mode does not read those logs.
 
-Codex has no equivalent HTTP hook in this release. Codex sessions appear only from the log tail, and only when the lines match the rollout shape Kovan knows.
+The same installer writes Codex hooks into `~/.codex/hooks.json` and Gemini CLI hooks into `~/.gemini/settings.json` when those directories already exist. If a tool is not installed, that step is skipped. Codex `PermissionRequest` and Gemini `BeforeTool` use the same forwarder. An empty reply is not an allow. Codex is not sent `updatedPermissions` on that event, because Codex fails closed on that field. Gemini Allow is one shot. Aider has no approval hook: Kovan reads `.aider.chat.history.md` from `KOVAN_AIDER_DIRS` or `AIDER_CHAT_HISTORY_FILE` and labels the bee read-only. OpenCode sessions are read from its database when `sqlite3` can open it. Approvals are posted only to the loopback URL in OpenCode's service file, and only after you choose Allow or Deny.
+
+### Replay and search
+
+Kovan records prompts, tool calls, approvals and cost under the data directory, in mode `0600` files. Press **R** or the search button to filter by CLI, project, date and status, then scrub one session. Set `KOVAN_REPLAY=0` to turn recording off. `replay.retentionDays` (default 30) drops older lines. Obvious secrets are redacted before a line is stored. See [SECURITY.md](SECURITY.md).
 
 ### Demo, zero setup
 
@@ -98,17 +108,19 @@ Codex has no equivalent HTTP hook in this release. Codex sessions appear only fr
 npm run demo         # http://localhost:4700  (cross-env, so this works on Windows)
 ```
 
-Demo mode invents three fictional projects and drives them with the same hook payloads a real session would send, including one permission card that waits until you answer it. Company mode is one click away.
+Demo mode invents fictional projects across Claude Code, Codex, Gemini CLI, OpenCode and Aider, including one permission card that waits until you answer it. Replay search is populated from those same events. Company mode is one click away.
 
 ## Company mode
 
-The original hive is still in the app: six departments, swarm tasks, the knowledge vault, the board, the calendar and routines. Open it with **Company** in the header (or set `"mode": "company"` in `kovan.config.json`). `npm run demo` keeps that mode working, with simulated runs when Claude Code is not logged in. The demo also shows priced spend, a 75% project warning, a 95% department warning, and a runaway flag on one fictional session. Those figures come from a fixed token fixture and the published rate card, and they are labeled as demo.
+The original hive is still in the app: six departments, swarm tasks, the knowledge vault, the board, the calendar and routines. Open it with **Company** in the header (or set `"mode": "company"` in `kovan.config.json`). `npm run demo` keeps that mode working, with simulated runs when no provider is logged in. The demo also shows priced spend, a 75% project warning, a 95% department warning, and a runaway flag on one fictional session. Those figures come from a fixed token fixture and the published rate card, and they are labeled as demo.
+
+Company-mode model ids can be `sonnet`, `opus`, `haiku`, or a provider id from config: `openai:gpt-4.1`, `gemini:gemini-2.5-flash`, `ollama:llama3.2`. Anything else is rejected. OpenAI uses `OPENAI_API_KEY`. Gemini uses `GEMINI_API_KEY` or `GOOGLE_API_KEY`. Ollama uses `OLLAMA_HOST` and defaults to `http://127.0.0.1:11434`. Keys stay in the environment. `.env.example` lists the names with empty values. Kovan does not load that file by itself.
 
 ## Cost and budgets
 
 The header shows today's spend. Open **Costs** (the coin button) for the breakdown by session, project, and department.
 
-Kovan prices only token counts that Claude Code or a company-mode run actually reported: `input_tokens`, `output_tokens`, cache reads, and cache writes. A missing report stays missing. A model that is not on the rate card stays unpriced. The card ships in `shared/prices.js`, dated `2026-11-09`, from Anthropic's published list prices. Override a row under `prices` in `kovan.config.json` and set your own `dated` value when you do.
+Kovan prices token counts a CLI or a company-mode run actually reported. A missing report stays **cost unknown**. A model that is not on the rate card stays unpriced. The card ships in `shared/prices.js`, dated `2026-11-22`: Claude list prices, OpenAI and Gemini published text rates, and 0 for Ollama. Override a row under `prices` in `kovan.config.json` and set your own `dated` value when you do.
 
 Budgets are optional and per scope (session, project, department), for a UTC day, a UTC month, or the life of a session. At **75%** and **95%** the hive shows a warning. At the limit:
 
@@ -155,6 +167,7 @@ Web Push uses a VAPID key generated on this machine and stored mode `0600` in th
 | Key | Action |
 |---|---|
 | `A` | Sessions (live) or Agents (company) |
+| `R` | Replay and search |
 | `1`–`9` / `0` | Fly to a zone / back to the overview |
 | `D` `V` `K` `B` | Departments, vault, calendar, board (company mode) |
 | `T` / `F` | Theme / focus |
@@ -175,7 +188,13 @@ Web Push uses a VAPID key generated on this machine and stored mode `0600` in th
     "sonnet": "claude-sonnet-4-5",
     "opus": "claude-opus-4-1",
     "haiku": "claude-haiku-4-5"
-  }
+  },
+  "providers": {
+    "openai": { "models": ["gpt-4.1", "gpt-4.1-mini"] },
+    "gemini": { "models": ["gemini-2.5-pro", "gemini-2.5-flash"] },
+    "ollama": { "models": ["llama3.2"], "host": "http://127.0.0.1:11434" }
+  },
+  "replay": { "enabled": true, "retentionDays": 30 }
 }
 ```
 
@@ -184,13 +203,16 @@ Web Push uses a VAPID key generated on this machine and stored mode `0600` in th
 ## How the hive is wired
 
 ```
-Claude Code --command--> hook-forward --POST + token--> /api/hooks --> live session store --SSE--> 3D hive
-                                      |
-                                      +-- PermissionRequest is held until Allow / Deny / Always
-                                          or until the wait ends with an empty body (terminal prompt)
+Claude / Codex / Gemini --command--> hook-forward --POST + token--> /api/hooks --> live session store --SSE--> 3D hive
+                                                          |
+                                                          +-- a decision is held until Allow / Deny
+                                                              or until the wait ends with an empty body
+OpenCode service (loopback only) --permission list--> same queue, reply only after a click
+Gemini / OpenCode / Aider logs --> read-only bees when no hook or service is available
+live events --> data/replay/*.jsonl (0600, redacted) --> Replay search
 ```
 
-Company mode still runs through `server/hive.mjs` (routing, swarms, approvals, routines) and the vault under `vault/`. Nothing about a live session is written into the vault.
+Company mode still runs through `server/hive.mjs` (routing, swarms, approvals, routines) and the vault under `vault/`. A live session is not written into the vault. The timeline is a separate store under the data directory.
 
 ## Security model
 
@@ -199,7 +221,8 @@ Kovan is a local dashboard for a process that can approve shell commands. The de
 - The server binds `127.0.0.1` only. Set `KOVAN_HOST` to listen somewhere else, and set `KOVAN_HOST_ALLOW` to the hostnames browsers will send. Binding `0.0.0.0` does not by itself trust every `Host` header.
 - Each launch writes a new token to a mode `0600` file in the data directory and requires it as `x-kovan-token` on `/api/*`, except the phone routes that use a paired device credential instead. The installed hooks read the launch token. The desktop page receives it in a meta tag only when the request `Host` is loopback. The phone page never receives it.
 - `Host` must be loopback (or a name you allowed). State-changing requests must send `Content-Type: application/json`. `Origin`, when present, must be this server. There is no permissive CORS header.
-- Model, effort, department, and schedule rules are checked against allowlists. The Claude CLI receives `--model=<id>` as one argument. The prompt is written to stdin.
+- Model, effort, department, and schedule rules are checked against allowlists. Provider model ids are allowlisted too. The Claude CLI receives `--model=<id>` as one argument. The prompt is written to stdin. API keys are read from the environment and are not written back.
+- Replay files are mode `0600`. Recording can be turned off. Retention is configurable. Obvious secrets are redacted before storage. Ollama calls stay on loopback unless you set `KOVAN_OLLAMA_ALLOW_REMOTE=1`.
 - The web app escapes text that it inserts as HTML and sends a Content-Security-Policy. Script sources are same-origin files only.
 - Oversized bodies get `413`. Unexpected failures return a generic message; details stay in the server log.
 - Hooks are installed without `onFailure: "block"`. A missed hook never becomes an allow. A budget limit denies the permission request. A phone timeout does not allow it.
@@ -211,9 +234,9 @@ See [SECURITY.md](SECURITY.md) for reporting and the threat model.
 
 **Why not `npx kovan`?** That npm name is not this project's. Install from a clone and run `node bin/kovan.mjs`.
 
-**Does Kovan auto-allow a permission prompt?** No. If the server is down or the wait ends, Claude Code shows its own terminal prompt. A phone that never answers does not allow the tool either.
+**Does Kovan auto-allow a permission prompt?** No. If the server is down or the wait ends, the hook prints nothing and the CLI keeps its own prompt. Aider never receives an approval from Kovan. A phone that never answers does not allow the tool either.
 
-**Where do the dollar figures come from?** From reported token buckets and the dated rate card. Demo mode labels its fixture. Unknown models are shown as unpriced.
+**Where do the dollar figures come from?** From reported token buckets and the dated rate card. Demo mode labels its fixture. Unknown models, and tools that did not report usage, show cost unknown. Ollama is $0.
 
 **Can another website on my machine click Allow?** It would need the launch token, a loopback `Host`, and a JSON request that passes the `Origin` check. The server does not answer CORS preflights.
 
@@ -223,7 +246,7 @@ See [SECURITY.md](SECURITY.md) for reporting and the threat model.
 
 ## Türkçe özet
 
-**Kovan**, açık olan Claude Code ve Codex oturumlarını tek bir canlı 3B kovanda gösterir. Her oturum bir arı, her proje bir bölgedir. Biri izin bekliyorsa kartta araç, komut ve diff görünür; Allow, Deny veya Always allow ile yanıtlarsınız. Kovan kapalıysa ya da süre dolarsa Claude Code kendi terminal sorusuna döner, kendiliğinden izin vermez.
+**Kovan**, Claude Code, Codex, Gemini CLI, OpenCode ve Aider oturumlarını tek bir canlı 3B kovanda gösterir. Her oturum bir arı, her proje bir bölgedir. Kanca destekleyen araçlarda izin kartı çıkar; Aider ve yalnızca günlükten okunan oturumlar salt okunurdur. Kovan kapalıysa ya da süre dolarsa araç kendi sorusuna döner, kendiliğinden izin vermez. Oturum geçmişi yerelde tutulur ve aranabilir.
 
 ```bash
 npm install && npm start

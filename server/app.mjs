@@ -48,6 +48,7 @@ export function createApp({
   refreshConnectors = async () => getConnectors(),
   phone = null,
   ledger = null,
+  replay = null,
   reach = null,
 }) {
   const baseHeaders = {
@@ -199,6 +200,25 @@ export function createApp({
         if (p === '/api/note' && req.method === 'GET') { const n = vault.note(url.searchParams.get('id') || ''); return n ? send(res, 200, n) : send(res, 404, { error: 'no such note' }); }
         if (p === '/api/usage' && req.method === 'GET') return send(res, 200, readUsage(hive.runs()));
         if (p === '/api/costs' && req.method === 'GET') return send(res, 200, ledger ? ledger.summary() : {});
+        if (p === '/api/replay' && req.method === 'GET') {
+          if (!replay) return send(res, 200, { enabled: false, events: [] });
+          const q = url.searchParams;
+          return send(res, 200, {
+            enabled: replay.enabled,
+            events: replay.search({
+              q: q.get('q') || '',
+              cli: q.get('cli') || '',
+              project: q.get('project') || '',
+              status: q.get('status') || '',
+              from: q.get('from') || '',
+              to: q.get('to') || '',
+            }).slice(-200),
+          });
+        }
+        if (p === '/api/replay/session' && req.method === 'GET') {
+          if (!replay) return send(res, 200, { enabled: false, events: [] });
+          return send(res, 200, { enabled: replay.enabled, events: replay.timeline(url.searchParams.get('id') || '') });
+        }
         if (p === '/api/phone/pending' && req.method === 'GET') {
           const pending = phoneQueue(req);
           return send(res, pending.status, pending.body);
@@ -244,7 +264,9 @@ export function createApp({
           if (p === '/api/hooks') {
             const ac = new AbortController();
             req.on('close', () => { if (!res.writableEnded) ac.abort(); });
-            const out = await live.handleHook(body, { signal: ac.signal });
+            const headerCli = String(req.headers['x-kovan-cli'] || 'claude');
+            const cli = headerCli === 'codex' || headerCli === 'gemini' ? headerCli : 'claude';
+            const out = await live.handleHook(body, { signal: ac.signal, cli });
             return send(res, 200, out || {});
           }
           if (p === '/api/live/answer') {

@@ -1,0 +1,9 @@
+{
+  "session_id": "gem_atlas",
+  "transcript_path": "/work/atlas-notes/.gemini/tmp/chats/session.jsonl",
+  "cwd": "/work/atlas-notes",
+  "hook_event_name": "BeforeTool",
+  "timestamp": "2026-04-03T12:01:00.000Z",
+  "tool_name": "run_shell_command",
+  "tool_input": { "command": "npm test" }
+}

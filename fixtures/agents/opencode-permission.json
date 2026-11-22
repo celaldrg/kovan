@@ -1,0 +1,7 @@
+{
+  "id": "perm_quill",
+  "sessionID": "ses_quill",
+  "action": "bash",
+  "resources": ["npm test"],
+  "metadata": {}
+}

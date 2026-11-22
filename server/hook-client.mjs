@@ -4,8 +4,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export function timeoutFor(event, env = {}) {
-  const fallback = event === 'PermissionRequest' ? 115000 : 8000;
-  const raw = event === 'PermissionRequest' ? (env.KOVAN_PERMISSION_TIMEOUT_MS || fallback) : (env.KOVAN_HOOK_TIMEOUT_MS || fallback);
+  const hold = event === 'PermissionRequest' || event === 'BeforeTool';
+  const fallback = hold ? 115000 : 8000;
+  const raw = hold ? (env.KOVAN_PERMISSION_TIMEOUT_MS || fallback) : (env.KOVAN_HOOK_TIMEOUT_MS || fallback);
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
@@ -56,9 +57,14 @@ export async function forwardHook(body, argv = [], env = {}, opts = {}) {
   let event = '';
   try { event = JSON.parse(body).hook_event_name || ''; } catch { event = ''; }
   try {
+    const cli = flag(argv, '--cli') || 'claude';
     const res = await fetchImpl(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-kovan-token': token },
+      headers: {
+        'content-type': 'application/json',
+        'x-kovan-token': token,
+        'x-kovan-cli': cli === 'codex' || cli === 'gemini' ? cli : 'claude',
+      },
       body,
       redirect: 'error',
       signal: AbortSignal.timeout(timeoutFor(event, env)),

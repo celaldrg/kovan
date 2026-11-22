@@ -1,8 +1,8 @@
 // Published list prices, USD per 1,000,000 tokens.
-// Dated from Anthropic's pricing page and the 2026-11-09 list-price card.
+// Dated 2026-11-22. Claude rows follow Anthropic's list. OpenAI and Gemini rows follow their published text rates. Ollama is 0.
 // Override any row in kovan.config.json under "prices". Unknown models stay unpriced.
 
-export const PRICE_DATED = '2026-11-09';
+export const PRICE_DATED = '2026-11-22';
 export const PRICE_SOURCE = 'https://platform.claude.com/docs/en/about-claude/pricing';
 
 /** Cache writes that are not split into 5-minute and 1-hour buckets use the 5-minute rate. */
@@ -24,6 +24,22 @@ export const PRICE_TABLE = {
       input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite5m: 0.125, cacheWrite1h: 0.2,
       long: { after: 100000, input: 0.5, output: 2.5, cacheRead: 0.05, cacheWrite5m: 0.625, cacheWrite1h: 1 },
     },
+    // OpenAI standard text rates. Cached input is a read discount. There is no cache-write fee on this card.
+    // https://developers.openai.com/api/docs/pricing
+    'gpt-4.1': { input: 2, output: 8, cacheRead: 0.5, cacheWrite5m: 0, cacheWrite1h: 0 },
+    'gpt-4.1-mini': { input: 0.4, output: 1.6, cacheRead: 0.1, cacheWrite5m: 0, cacheWrite1h: 0 },
+    'gpt-5': { input: 1.25, output: 10, cacheRead: 0.125, cacheWrite5m: 0, cacheWrite1h: 0 },
+    'gpt-5-mini': { input: 0.25, output: 2, cacheRead: 0.025, cacheWrite5m: 0, cacheWrite1h: 0 },
+    // Gemini paid tier, text. Long-context rates apply above 200k prompt tokens.
+    // https://ai.google.dev/gemini-api/docs/pricing
+    'gemini-2.5-pro': {
+      input: 1.25, output: 10, cacheRead: 0.125, cacheWrite5m: 0, cacheWrite1h: 0,
+      long: { after: 200000, input: 2.5, output: 15, cacheRead: 0.25, cacheWrite5m: 0, cacheWrite1h: 0 },
+    },
+    'gemini-2.5-flash': { input: 0.3, output: 2.5, cacheRead: 0.03, cacheWrite5m: 0, cacheWrite1h: 0 },
+    'gemini-2.5-flash-lite': { input: 0.1, output: 0.4, cacheRead: 0.01, cacheWrite5m: 0, cacheWrite1h: 0 },
+    // Local Ollama models are free. Any ollama:* id is priced at 0 even when it is not listed here.
+    'ollama:llama3.2': { input: 0, output: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 },
   },
   aliases: {
     sonnet: 'claude-sonnet-4-5',

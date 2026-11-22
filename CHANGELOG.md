@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. The format is based on Keep a Changelog, and this project uses semantic versioning.
 
+## [0.3.0] - 2026-11-22
+
+### Added
+
+- Live sessions from Codex, Gemini CLI, OpenCode and Aider next to Claude Code. Each adapter is optional and stays quiet when the tool is absent.
+- Codex and Gemini CLI hooks, installed only when that tool's config directory already exists. A hook that exits without a decision does not allow the tool. Codex `PermissionRequest` replies omit `updatedPermissions`, which that event rejects. Gemini `BeforeTool` can deny, or allow once. Aider is read-only: it records chat history and can notify when a reply is ready, and it has no approval hook. OpenCode approvals are sent only to its loopback service, and only after Allow or Deny.
+- Company-mode runs can use OpenAI, Gemini or local Ollama in addition to Claude. Model ids stay on the configured allowlist. Ollama defaults to loopback and is priced at 0. Keys are read from the environment and are not written to the repo or to error text.
+- A local session timeline under the data directory: prompts, tool calls, approvals and cost. Files are mode 0600. Recording can be turned off. Retention is configurable. Search filters by CLI, project, date and status. Obvious secrets are redacted before a line is stored.
+- The rate card adds published OpenAI and Gemini text prices, dated 2026-11-22. Ollama is 0.
+
 ## [0.2.0] - 2026-11-22
 
 ### Added

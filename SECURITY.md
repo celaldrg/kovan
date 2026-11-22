@@ -4,10 +4,11 @@
 
 | Version | Supported |
 | --- | --- |
+| 0.3.0 | Yes |
 | 0.2.0 | Yes |
 | 0.1.1 and older | No |
 
-0.1.0 listens on every interface and does not authenticate the API. 0.1.1 is the loopback release without budgets or phone pairing. Upgrade to 0.2.0.
+0.1.0 listens on every interface and does not authenticate the API. 0.1.1 is the loopback release without budgets or phone pairing. 0.2.0 adds budgets and phone pairing. 0.3.0 adds more CLIs, providers, and a local replay store.
 
 ## Reporting a vulnerability
 
@@ -18,6 +19,20 @@ https://github.com/celaldrg/kovan/security/advisories/new
 Please do not open a public issue for a vulnerability, and do not include exploit details in a public commit or pull request.
 
 This project has no security email address. Use the private reporting page above.
+
+## What 0.3.0 stores
+
+Replay writes a timeline under the data directory (`data/replay/*.jsonl`, or `$KOVAN_DATA/replay`). Each file is mode `0600`. The directory is mode `0700` where the platform allows it. Lines are prompts, tool calls, approvals and cost notes from sessions Kovan is already showing.
+
+Before a line is written, Kovan redacts home-directory prefixes and obvious secret shapes (API key prefixes, bearer tokens, `api_key=` / `token=` / `password=` assignments). This is a pattern pass. It will miss a secret that does not look like those shapes. Do not point Kovan at a transcript you cannot store on this machine.
+
+Set `KOVAN_REPLAY=0` or `"replay": { "enabled": false }` to stop recording. `replay.retentionDays` (or `KOVAN_REPLAY_DAYS`) drops older lines on startup. The default is 30 days.
+
+Provider keys are read from `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` or `GOOGLE_API_KEY` at call time. Kovan does not write those values into config, the data directory, or the text returned when a call fails. Ollama is called at `OLLAMA_HOST`, which must be loopback unless `KOVAN_OLLAMA_ALLOW_REMOTE=1`.
+
+OpenCode's service file can contain a password. Kovan reads it to call `127.0.0.1` only, sends it as a Basic header, and does not copy it into the replay store. A non-loopback service URL is ignored.
+
+Codex and Gemini hooks use the same forwarder as Claude Code. If Kovan is down, the token is missing, or the wait ends, the process exits 0 and prints nothing. That is not an allow. Codex is not sent `updatedPermissions` on `PermissionRequest`, because that field fails closed. Gemini `BeforeTool` is allowed only when you choose Allow. Aider has no approval hook, so those sessions stay read-only.
 
 ## Threat model
 
