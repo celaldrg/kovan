@@ -2,17 +2,22 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 
-test('the npm package is @celaldrg/kovan and the packed files omit tests', () => {
-  const result = spawnSync(process.execPath, [
-    'node_modules/npm/bin/npm-cli.js', 'pack', '--dry-run', '--ignore-scripts', '--json',
-  ], { encoding: 'utf8' });
-  if (result.status !== 0) {
-    const fallback = spawnSync('npm', ['pack', '--dry-run', '--ignore-scripts', '--json'], { encoding: 'utf8' });
-    assert.equal(fallback.status, 0, fallback.stderr);
-    assertPacked(parsePack(fallback.stdout));
-    return;
+function runPack() {
+  const cli = process.env.npm_execpath;
+  if (cli) {
+    const viaNode = spawnSync(process.execPath, [cli, 'pack', '--dry-run', '--ignore-scripts', '--json'], { encoding: 'utf8' });
+    if (viaNode.status === 0) return viaNode;
   }
-  assertPacked(parsePack(result.stdout));
+  return spawnSync('npm', ['pack', '--dry-run', '--ignore-scripts', '--json'], {
+    encoding: 'utf8',
+    shell: process.platform === 'win32',
+  });
+}
+
+test('the npm package is @celaldrg/kovan and the packed files omit tests', () => {
+  const result = runPack();
+  assert.equal(result.status, 0, result.stderr || result.error?.message || 'npm pack failed');
+  assertPacked(parsePack(result.stdout || ''));
 });
 
 function parsePack(stdout) {

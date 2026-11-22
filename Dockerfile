@@ -11,7 +11,7 @@ RUN npm run build
 FROM node:22-bookworm-slim
 LABEL org.opencontainers.image.source=https://github.com/celaldrg/kovan
 LABEL org.opencontainers.image.title=kovan
-LABEL org.opencontainers.image.description=Local hive for coding-agent sessions
+LABEL org.opencontainers.image.description="Local hive for coding-agent sessions"
 LABEL org.opencontainers.image.licenses=MIT
 RUN useradd --system --create-home --home-dir /var/lib/kovan --shell /usr/sbin/nologin kovan \
   && mkdir -p /opt/kovan /var/lib/kovan \
