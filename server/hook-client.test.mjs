@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { forwardHook, hookEndpoint, resolveHook, timeoutFor, GEMINI_FORWARD_TIMEOUT_MS, GEMINI_HOOK_TIMEOUT_MS, GEMINI_SERVER_WAIT_MS } from './hook-client.mjs';
+import { forwardHook, hookEndpoint, resolveHook, timeoutFor, approvalWaits, GEMINI_FORWARD_TIMEOUT_MS, GEMINI_HOOK_TIMEOUT_MS, GEMINI_SERVER_WAIT_MS } from './hook-client.mjs';
 import { GEMINI_DENY_REASON } from '../shared/agents.js';
 
 test('hook endpoint stays on loopback', () => {
@@ -59,6 +59,23 @@ function denyResult(result) {
   assert.match(result.stderr, /Nothing was allowed/);
   assert.equal(body.decision === 'allow', false);
 }
+
+test('a long permission timeout stays under each CLI hook timeout', () => {
+  const env = { KOVAN_PERMISSION_TIMEOUT_MS: '500000' };
+  for (const cli of ['gemini', 'codex', 'claude']) {
+    const waits = approvalWaits(cli, env);
+    assert.ok(waits.serverMs < waits.forwarderMs, cli);
+    assert.ok(waits.forwarderMs < waits.hookMs, cli);
+  }
+  assert.equal(approvalWaits('gemini', env).hookMs, GEMINI_HOOK_TIMEOUT_MS);
+  assert.equal(timeoutFor('BeforeTool', env, 'gemini'), approvalWaits('gemini', env).forwarderMs);
+  assert.ok(timeoutFor('BeforeTool', env, 'gemini') < GEMINI_HOOK_TIMEOUT_MS);
+  assert.equal(timeoutFor('PermissionRequest', env, 'codex'), approvalWaits('codex', env).forwarderMs);
+  assert.ok(timeoutFor('PermissionRequest', env, 'claude') < 120000);
+  const tiny = approvalWaits('gemini', { KOVAN_PERMISSION_TIMEOUT_MS: '1000' });
+  assert.ok(tiny.serverMs < tiny.forwarderMs);
+  assert.ok(tiny.forwarderMs < tiny.hookMs);
+});
 
 test('Gemini BeforeTool fails closed on every path that is not an explicit decision', async () => {
   assert.ok(GEMINI_HOOK_TIMEOUT_MS > GEMINI_FORWARD_TIMEOUT_MS);

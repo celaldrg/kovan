@@ -16,14 +16,38 @@ export const GEMINI_FORWARD_TIMEOUT_MS = 120000;
 export const GEMINI_HOOK_TIMEOUT_MS = 130000;
 /** Kovan holds a Gemini BeforeTool for less than the forwarder wait, then denies. */
 export const GEMINI_SERVER_WAIT_MS = 110000;
+/** Claude and Codex permission hooks are installed with this many seconds. */
+export const CLI_HOOK_TIMEOUT_SEC = 120;
+const WAIT_GAP_MS = 5000;
 
-export function timeoutFor(event, env = {}) {
-  const fallback = event === 'BeforeTool' ? GEMINI_FORWARD_TIMEOUT_MS : (event === 'PermissionRequest' ? 115000 : 8000);
-  const raw = event === 'BeforeTool' || event === 'PermissionRequest'
-    ? (env.KOVAN_PERMISSION_TIMEOUT_MS || fallback)
-    : (env.KOVAN_HOOK_TIMEOUT_MS || fallback);
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
+function requestedMs(env) {
+  const n = Number(env?.KOVAN_PERMISSION_TIMEOUT_MS);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * Hold, forwarder, and installed hook timeout for one CLI.
+ * Kovan hold is always shorter than the forwarder, which is always shorter
+ * than the hook timeout that CLI will enforce. A large KOVAN_PERMISSION_TIMEOUT_MS
+ * is clamped so Gemini cannot kill the hook and continue the tool.
+ */
+export function approvalWaits(cli, env = {}) {
+  const gemini = cli === 'gemini';
+  const hookMs = gemini ? GEMINI_HOOK_TIMEOUT_MS : CLI_HOOK_TIMEOUT_SEC * 1000;
+  const requested = requestedMs(env);
+  const forwarderDefault = gemini ? GEMINI_FORWARD_TIMEOUT_MS : 115000;
+  const serverDefault = gemini ? GEMINI_SERVER_WAIT_MS : 110000;
+  const forwarderMs = Math.min(requested ?? forwarderDefault, hookMs - WAIT_GAP_MS);
+  let serverMs = Math.min(requested == null ? serverDefault : requested - WAIT_GAP_MS, forwarderMs - WAIT_GAP_MS);
+  if (!(serverMs > 0)) serverMs = Math.max(1, Math.floor(forwarderMs / 2));
+  return { serverMs, forwarderMs, hookMs };
+}
+
+export function timeoutFor(event, env = {}, cli = 'claude') {
+  if (event === 'BeforeTool') return approvalWaits('gemini', env).forwarderMs;
+  if (event === 'PermissionRequest') return approvalWaits(cli === 'codex' ? 'codex' : 'claude', env).forwarderMs;
+  const raw = Number(env.KOVAN_HOOK_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : 8000;
 }
 
 function flag(argv, name) {
@@ -82,7 +106,7 @@ export async function forwardHook(body, argv = [], env = {}, opts = {}) {
       },
       body,
       redirect: 'error',
-      signal: AbortSignal.timeout(timeoutFor(event, env)),
+      signal: AbortSignal.timeout(timeoutFor(event, env, cli === 'codex' || cli === 'gemini' ? cli : 'claude')),
     });
     const text = await res.text();
     if (res.ok && text.trim().startsWith('{')) return text.trim();

@@ -9,6 +9,7 @@ import { readSkillShelf } from './knowledge.mjs';
 import { readUsage } from './usage.mjs';
 import { checkDept, checkEffort, checkModel, checkRule } from './input.mjs';
 import { tokenMatches } from './token.mjs';
+import { injectLaunchToken } from './page-token.mjs';
 import {
   CONTENT_SECURITY_POLICY, hostAllowed, isJsonContentType, originAllowed, parseHostHeader, readBody, resolveStatic,
 } from './guard.mjs';
@@ -102,10 +103,7 @@ export function createApp({
     if (path.extname(file) === '.html') {
       let html = fs.readFileSync(file, 'utf8');
       const phonePage = html.includes('name="kovan-phone"');
-      if (!phonePage && loopbackHost(req.headers.host) && !html.includes('name="kovan-token"') && /^[a-f0-9]{64}$/i.test(token)) {
-        const meta = `<meta name="kovan-token" content="${token}" />`;
-        html = html.includes('<head>') ? html.replace('<head>', `<head>\n  ${meta}`) : `${meta}${html}`;
-      }
+      if (!phonePage && loopbackHost(req.headers.host)) html = injectLaunchToken(html, token);
       res.writeHead(200, { ...baseHeaders, 'content-type': 'text/html; charset=utf-8', 'content-security-policy': CONTENT_SECURITY_POLICY });
       return res.end(html);
     }
