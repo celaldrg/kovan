@@ -11,6 +11,12 @@
     "opus": "claude-opus-4-1",
     "haiku": "claude-haiku-4-5"
   },
+  "providers": {
+    "openai": { "models": ["gpt-4.1", "gpt-4.1-mini"] },
+    "gemini": { "models": ["gemini-2.5-pro", "gemini-2.5-flash"] },
+    "ollama": { "models": ["llama3.2"], "host": "http://127.0.0.1:11434" }
+  },
+  "replay": { "enabled": true, "retentionDays": 30 },
   "connectors": { "allow": [], "deny": [] },
   "swarm": { "enabled": true, "max": 3 },
   "phone": { "enabled": false, "origin": "" },

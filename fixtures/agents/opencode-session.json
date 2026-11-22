@@ -1,0 +1,15 @@
+{
+  "id": "ses_quill",
+  "directory": "/work/quill-editor",
+  "title": "Tighten the editor empty state",
+  "model": { "id": "gpt-4.1-mini", "providerID": "openai" },
+  "tokens_input": 800,
+  "tokens_output": 120,
+  "tokens_reasoning": 40,
+  "tokens_cache_read": 50,
+  "tokens_cache_write": 10,
+  "time_created": 1770000000000,
+  "time_updated": 1770000005000,
+  "time_busy": 1770000004000,
+  "time_idle": 1770000002000
+}

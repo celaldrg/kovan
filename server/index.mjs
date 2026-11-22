@@ -7,7 +7,9 @@ import { createHive } from './hive.mjs';
 import { listConnectors } from './connectors.mjs';
 import { createLive } from './live.mjs';
 import { startLogTail } from './jsonl-tail.mjs';
+import { startAgentWatch } from './agents-watch.mjs';
 import { startLiveDemo } from './live-demo.mjs';
+import { createReplay } from './replay.mjs';
 import { createApp } from './app.mjs';
 import { allowedHostnames, publicReach, resolveBind } from './guard.mjs';
 import { launchToken } from './token.mjs';
@@ -64,9 +66,21 @@ const emitAll = (event, data) => {
     });
   }
 };
-const live = createLive({ emit: emitAll, gate: ledger.gate() });
+const replayOn = process.env.KOVAN_REPLAY === '0' ? false : cfg.replay?.enabled !== false;
+const replayDays = Number(process.env.KOVAN_REPLAY_DAYS || cfg.replay?.retentionDays || 30);
+const replay = createReplay({
+  dir: path.join(cfg.dataDir, 'replay'),
+  enabled: replayOn,
+  retentionDays: replayDays,
+});
+if (replayOn) replay.purge();
+const live = createLive({
+  emit: emitAll,
+  gate: ledger.gate(),
+  onRecord(event) { replay.append(event); },
+});
 if (demo) {
-  startLiveDemo(live);
+  startLiveDemo(live, replay);
   const keep = setInterval(() => {
     const at = Date.now();
     for (let i = 0; i < 6; i++) ledger.noteTool({ sessionId: 'ses_kite', project: 'paperkite-cli', signature: 'Bash npm test', at: at - i * 1000 });
@@ -74,6 +88,7 @@ if (demo) {
   keep.unref?.();
 } else {
   startLogTail(live);
+  startAgentWatch(live);
   const pull = () => {
     try {
       for (const row of collectUsageEntries()) ledger.ingest({ ...row, source: 'jsonl' });
@@ -91,7 +106,7 @@ const bind = resolveBind(process.env);
 const token = launchToken(path.join(cfg.dataDir, 'token'));
 const server = createApp({
   cfg, crew, vault, ai, hive, live, token, clients,
-  phone, ledger, reach,
+  phone, ledger, replay, reach,
   allowedHosts: allowedHostnames(process.env, bind.host),
   getConnectors: () => connectors,
   refreshConnectors: async () => {

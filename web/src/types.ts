@@ -32,7 +32,8 @@ export interface LivePermit { id: string; tool: string; command: string; diff: s
 export interface LiveBee {
   id: string; sessionId: string; kind: 'session' | 'subagent'; project: string; zone: string;
   name: string; role: string; model: string; state: LiveState; activity: string; updated: number;
-  source: 'claude' | 'codex' | 'demo'; attention: string; permission: LivePermit | null;
+  source: 'claude' | 'codex' | 'gemini' | 'opencode' | 'aider' | 'demo'; attention: string; permission: LivePermit | null;
+  readOnly?: boolean; approvals?: 'hooks' | 'api' | 'none'; note?: string; always?: boolean;
   cost?: { usd: number; tokens: number; unpriced: number } | null;
   budget?: { level: string; ratio: number | null; scope: string; limitUsd: number | null; period: string } | null;
   runaway?: { kind: string; detail: string } | null;
@@ -41,6 +42,10 @@ export interface LiveBee {
 export interface LiveQueueItem {
   id: string; beeId: string; sessionId: string; project: string; name: string;
   tool: string; command: string; diff: string; file: string; since: number;
+  cli?: string; always?: boolean;
+}
+export interface ReplayEvent {
+  id: string; at: number; sessionId: string; cli: string; project: string; status: string; kind: string; tool: string; text: string;
 }
 export interface LiveZoneInfo { id: string; name: string; color: string; source: string }
 export interface LiveSnap { source: 'hooks' | 'logs' | 'demo' | 'none'; hooked: boolean; sessions: LiveBee[]; queue: LiveQueueItem[]; zones: LiveZoneInfo[] }

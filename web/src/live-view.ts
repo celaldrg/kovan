@@ -1,13 +1,14 @@
 // Live hive panels: project zones, session bees, and the Needs you approval card.
 import { esc } from './md';
 import { icon } from './icons';
+import { cliLabel, costLabel } from './cli-label';
 import type { Dept, Worker, LiveSnap, LiveBee, LiveQueueItem } from './types';
 
 export function liveCrew(snap: LiveSnap): { depts: Dept[]; workers: Worker[] } {
   const depts: Dept[] = snap.zones.map(z => ({
     id: z.id,
     name: z.name,
-    tr: z.source === 'codex' ? 'Codex' : 'Claude Code',
+    tr: cliLabel(z.source),
     code: z.name.replace(/[^a-z0-9]/gi, '').slice(0, 3).toUpperCase() || 'SES',
     color: z.color,
     icon: 'Folder',
@@ -51,12 +52,13 @@ export function permitCard(item: LiveQueueItem, bee?: LiveBee) {
     <p class="permit-tool"><code>${esc(item.tool)}</code> ${item.file ? `<em>${esc(item.file)}</em>` : ''}</p>
     ${item.command ? `<p class="permit-cmd">${esc(item.command)}</p>` : ''}
     ${diffHtml(item.diff)}
+    ${bee?.readOnly ? `<p class="budget-note">${esc(bee.note || 'Read-only. Kovan will not approve this.')}</p>` : ''}
     ${bee?.budgetBlock
       ? `<p class="budget-note">Budget reached. Kovan denies this tool. Nothing is allowed automatically.</p><div class="permit-acts"><button type="button" data-go="deny">${icon('X', 13)}Deny</button></div>`
       : `<div class="permit-acts">
       <button type="button" data-go="allow" class="ok">${icon('Check', 13, 2.2)}Allow</button>
       <button type="button" data-go="deny">${icon('X', 13)}Deny</button>
-      <button type="button" data-go="always">${icon('ShieldCheck', 13)}Always allow</button>
+      ${item.always === false ? '' : `<button type="button" data-go="always">${icon('ShieldCheck', 13)}Always allow</button>`}
     </div>`}
   </article>`;
 }
@@ -163,11 +165,11 @@ export function paintSessions(root: HTMLElement, snap: LiveSnap, onOpen: (id: st
     const label = bee.state === 'working' ? '<i class="spin"></i>Working' : bee.state === 'needs-you' ? `${icon('Hand', 11)}Needs you` : bee.state === 'stuck' ? 'Stuck' : 'Idle';
     return `<article class="acard ${bee.state === 'needs-you' ? 'approval' : bee.state}" data-bee="${esc(bee.id)}" style="--c:${color}">
       <header><span class="hexav" style="--c:${color};width:36px;height:36px">${esc((bee.name[0] || '?').toUpperCase())}</span><div class="an"><b>${esc(bee.name)}</b><span>${esc(bee.role)}</span></div><em class="ast ${bee.state === 'needs-you' ? 'approval' : bee.state}">${label}</em></header>
-      <div class="arow"><i class="tag dp">${esc(bee.project)}</i><span class="chip-m">${icon('Cpu', 11)}${esc(bee.source === 'codex' ? 'Codex' : 'Claude')}</span></div>
-      <p class="anow">${bee.runaway ? `<b>Runaway.</b> ${esc(bee.runaway.detail)} ` : ''}${esc(bee.activity || 'quiet')}</p>
+      <div class="arow"><i class="tag dp">${esc(bee.project)}</i><span class="chip-m">${icon('Cpu', 11)}${esc(cliLabel(bee.source))}</span><span class="chip-m">${esc(costLabel(bee.cost))}</span></div>
+      <p class="anow">${bee.readOnly ? `<b>Read-only.</b> ` : ''}${bee.runaway ? `<b>Runaway.</b> ${esc(bee.runaway.detail)} ` : ''}${esc(bee.activity || 'quiet')}</p>
     </article>`;
   };
-  const body = snap.zones.map(z => `<section class="agroup" style="--c:${z.color}"><h3><i></i>${esc(z.name)}<small>${z.source === 'codex' ? 'Codex' : 'Claude Code'}</small></h3><div class="acards">${snap.sessions.filter(s => s.zone === z.id).map(card).join('') || ''}</div></section>`).join('');
+  const body = snap.zones.map(z => `<section class="agroup" style="--c:${z.color}"><h3><i></i>${esc(z.name)}<small>${esc(cliLabel(z.source))}</small></h3><div class="acards">${snap.sessions.filter(s => s.zone === z.id).map(card).join('') || ''}</div></section>`).join('');
   root.innerHTML = `${head}<div class="agrid">${body || `<div class="empty">${icon('Hexagon', 28)}<p>No live sessions.</p><small>node bin/kovan.mjs hooks install</small></div>`}</div>`;
   root.querySelectorAll<HTMLElement>('[data-bee]').forEach(el => el.onclick = () => { if (el.dataset.bee) onOpen(el.dataset.bee); });
 }

@@ -2,6 +2,7 @@
 // built-in demo writer so the hive is alive with no setup at all.
 import { spawn, spawnSync } from 'node:child_process';
 import { sumUsage } from '../shared/hooks.js';
+import { providerCatalog, providerModel, providerOf, runGemini, runOllama, runOpenAI, safeProviderError } from './providers.mjs';
 
 function packResult(text, usage, extra = {}) {
   const reported = usage && typeof usage === 'object' ? usage : null;
@@ -23,7 +24,12 @@ export function modelIds(cfg = {}) {
 
 export function modelChoices(cfg = {}) {
   const list = Array.isArray(cfg.models) && cfg.models.length ? cfg.models.map(String) : MODELS;
-  return list;
+  if (!cfg.providers) return list;
+  const extra = [];
+  for (const [name, spec] of Object.entries(providerCatalog(cfg))) {
+    for (const id of spec.models) extra.push(`${name}:${id}`);
+  }
+  return [...new Set([...list, ...extra])];
 }
 
 /** A model id safe to place in a single argv token. Rejects flag-shaped values. */
@@ -133,6 +139,23 @@ export function createAI(backend, cfg = {}) {
     backend,
     /** kind: 'work' | 'chat' | 'route' | 'split' | 'merge' | 'classify'. ctx is used by the demo writer. */
     async run(prompt, { model = 'sonnet', effort = '', kind = 'work', ctx = {}, tools = true } = {}) {
+      const picked = providerOf(model) === 'claude' ? null : providerModel(model, cfg);
+      if (providerOf(model) !== 'claude' && !picked) throw new Error('invalid model');
+      if (picked && backend !== 'demo') {
+        const maxTokens = effort === 'low' ? 800 : 2000;
+        const host = cfg.providers?.ollama?.host || process.env.OLLAMA_HOST;
+        try {
+          const call = picked.provider === 'openai'
+            ? runOpenAI(prompt, { model: picked.id, maxTokens })
+            : picked.provider === 'gemini'
+              ? runGemini(prompt, { model: picked.id })
+              : runOllama(prompt, { model: picked.id, host });
+          const result = await call;
+          return packResult(result.text, result.usage);
+        } catch (err) {
+          throw new Error(safeProviderError(err));
+        }
+      }
       if (backend === 'claude-cli') return runCli(prompt, { model, effort, tools: tools && kind !== 'route' && kind !== 'classify' });
       if (backend === 'api') return runApi(prompt, { model, effort, ids });
       await sleep(kind === 'chat' ? 700 : kind === 'route' ? 150 : 3500 + Math.random() * 5000);

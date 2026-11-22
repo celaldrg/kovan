@@ -46,6 +46,50 @@ export function startLiveDemo(live) {
   const standing = live.handleHook(edit);
   standing.catch(() => {});
 
+  // Other CLIs. Codex and Gemini speak through the same hook path. OpenCode and Aider are logs.
+  live.handleHook({
+    session_id: 'codex_harbor', cwd: '/work/harbor-docs', hook_event_name: 'SessionStart', source: 'startup',
+    model: 'gpt-4.1', session_title: 'Dock note',
+  }, { cli: 'codex' });
+  live.handleHook({
+    session_id: 'codex_harbor', cwd: '/work/harbor-docs', hook_event_name: 'UserPromptSubmit',
+    prompt: 'Add a dock note to the harbor guide', model: 'gpt-4.1',
+    message_id: 'demo-codex-harbor', usage: { input_tokens: 1800, output_tokens: 400, cache_read_input_tokens: 200 },
+  }, { cli: 'codex' });
+  live.handleHook({
+    session_id: 'codex_harbor', cwd: '/work/harbor-docs', hook_event_name: 'PreToolUse',
+    tool_name: 'Bash', tool_input: { command: 'git status' },
+  }, { cli: 'codex' });
+  live.handleHook({
+    session_id: 'gem_atlas', cwd: '/work/atlas-notes', hook_event_name: 'SessionStart', source: 'startup',
+    model: 'gemini-2.5-flash', session_title: 'Atlas notes',
+  }, { cli: 'gemini' });
+  live.handleHook({
+    session_id: 'gem_atlas', cwd: '/work/atlas-notes', hook_event_name: 'BeforeAgent',
+    prompt: 'Summarise the atlas notes', model: 'gemini-2.5-flash',
+    message_id: 'demo-gem-atlas', usage: { input_tokens: 40000, output_tokens: 8000 },
+  }, { cli: 'gemini' });
+  live.handleHook({
+    session_id: 'gem_atlas', cwd: '/work/atlas-notes', hook_event_name: 'AfterAgent',
+    last_assistant_message: 'Atlas notes are summarised.',
+  }, { cli: 'gemini' });
+  live.applyLog({
+    id: 'ses_quill', cwd: '/work/quill-editor', source: 'opencode', model: 'openai/local-writer',
+    title: 'Tighten the editor empty state', state: 'working', activity: 'Tighten the editor empty state',
+    readOnly: true, approvals: 'none',
+    note: 'Read-only until OpenCode\'s local service is reachable. Kovan does not approve from the database alone.',
+    usages: [{ messageId: 'demo-opencode', model: 'local-writer', usage: { input_tokens: 400, output_tokens: 80 } }],
+    events: [{ kind: 'prompt', text: 'Tighten the editor empty state', status: 'working' }],
+  });
+  live.applyLog({
+    id: 'aider-keel', cwd: '/work/keel-notes', source: 'aider', model: 'gpt-4.1',
+    title: 'Greeting', state: 'idle', activity: 'Applied edit to greeting.py',
+    readOnly: true, approvals: 'none',
+    note: 'Read-only. Aider records chat history and can ring when a reply is ready. It has no approval hook.',
+    usages: [{ messageId: 'demo-aider', model: 'gpt-4.1', usage: { input_tokens: 1200, output_tokens: 80 } }],
+    events: [{ kind: 'prompt', text: 'Fix the greeting in greeting.py', status: 'idle' }, { kind: 'tool', tool: 'edit', text: 'Applied edit to greeting.py', status: 'done' }],
+  });
+
   let n = 0;
   const timer = setInterval(() => {
     n += 1;

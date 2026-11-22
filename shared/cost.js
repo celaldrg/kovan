@@ -61,6 +61,9 @@ function applyLong(rate, buckets) {
 export function priceUsage(usage, model, table = PRICE_TABLE) {
   const buckets = usageBuckets(usage);
   if (!buckets) return { ok: false, reason: 'no-usage', usd: null, buckets: null, model: String(model || ''), dated: table.dated };
+  if (String(model || '').startsWith('ollama:') || model === 'ollama') {
+    return { ok: true, reason: 'local', usd: 0, buckets, model: String(model || 'ollama'), dated: table.dated };
+  }
   const found = lookupRate(model, table);
   if (!found) return { ok: false, reason: 'unpriced-model', usd: null, buckets, model: String(model || ''), dated: table.dated };
   const rate = applyLong(found, buckets);

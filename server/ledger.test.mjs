@@ -70,7 +70,7 @@ test('demo figures are priced from explicit token counts', () => {
   ledger.useDemo();
   const summary = ledger.summary();
   assert.equal(summary.demo, true);
-  assert.equal(summary.dated, '2026-11-09');
+  assert.equal(summary.dated, '2026-11-22');
   const north = summary.projects.find(row => row.key === 'northwind-web');
   const eng = summary.departments.find(row => row.key === 'engineering');
   assert.equal(north.level, 'warn');

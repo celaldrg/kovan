@@ -1,13 +1,53 @@
-// Sends one Claude Code hook payload to the local Kovan API.
-// Failure returns an empty string: the caller exits 0 and never invents an allow.
+// Sends one hook payload to the local Kovan API.
+// Claude Code and Codex print nothing and exit 0 when Kovan does not answer.
+// That is not an allow: Claude shows its own prompt, and Codex PermissionRequest
+// falls through to its normal approval flow.
+// Gemini BeforeTool is different. Exit 0 with no decision, and a hook timeout,
+// both let the tool run. A missing answer therefore exits 2 with an explicit deny,
+// and the installed Gemini timeout is longer than this wait so Gemini does not
+// kill the process first.
 import fs from 'node:fs';
 import path from 'node:path';
+import { explicitGeminiDecision, geminiDenyBody } from '../shared/agents.js';
 
-export function timeoutFor(event, env = {}) {
-  const fallback = event === 'PermissionRequest' ? 115000 : 8000;
-  const raw = event === 'PermissionRequest' ? (env.KOVAN_PERMISSION_TIMEOUT_MS || fallback) : (env.KOVAN_HOOK_TIMEOUT_MS || fallback);
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
+/** How long the forwarder waits for Kovan on a Gemini BeforeTool. */
+export const GEMINI_FORWARD_TIMEOUT_MS = 120000;
+/** Installed Gemini hook timeout. Must stay above the forwarder wait. Gemini's own timeout continues the tool. */
+export const GEMINI_HOOK_TIMEOUT_MS = 130000;
+/** Kovan holds a Gemini BeforeTool for less than the forwarder wait, then denies. */
+export const GEMINI_SERVER_WAIT_MS = 110000;
+/** Claude and Codex permission hooks are installed with this many seconds. */
+export const CLI_HOOK_TIMEOUT_SEC = 120;
+const WAIT_GAP_MS = 5000;
+
+function requestedMs(env) {
+  const n = Number(env?.KOVAN_PERMISSION_TIMEOUT_MS);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * Hold, forwarder, and installed hook timeout for one CLI.
+ * Kovan hold is always shorter than the forwarder, which is always shorter
+ * than the hook timeout that CLI will enforce. A large KOVAN_PERMISSION_TIMEOUT_MS
+ * is clamped so Gemini cannot kill the hook and continue the tool.
+ */
+export function approvalWaits(cli, env = {}) {
+  const gemini = cli === 'gemini';
+  const hookMs = gemini ? GEMINI_HOOK_TIMEOUT_MS : CLI_HOOK_TIMEOUT_SEC * 1000;
+  const requested = requestedMs(env);
+  const forwarderDefault = gemini ? GEMINI_FORWARD_TIMEOUT_MS : 115000;
+  const serverDefault = gemini ? GEMINI_SERVER_WAIT_MS : 110000;
+  const forwarderMs = Math.min(requested ?? forwarderDefault, hookMs - WAIT_GAP_MS);
+  let serverMs = Math.min(requested == null ? serverDefault : requested - WAIT_GAP_MS, forwarderMs - WAIT_GAP_MS);
+  if (!(serverMs > 0)) serverMs = Math.max(1, Math.floor(forwarderMs / 2));
+  return { serverMs, forwarderMs, hookMs };
+}
+
+export function timeoutFor(event, env = {}, cli = 'claude') {
+  if (event === 'BeforeTool') return approvalWaits('gemini', env).forwarderMs;
+  if (event === 'PermissionRequest') return approvalWaits(cli === 'codex' ? 'codex' : 'claude', env).forwarderMs;
+  const raw = Number(env.KOVAN_HOOK_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : 8000;
 }
 
 function flag(argv, name) {
@@ -56,15 +96,42 @@ export async function forwardHook(body, argv = [], env = {}, opts = {}) {
   let event = '';
   try { event = JSON.parse(body).hook_event_name || ''; } catch { event = ''; }
   try {
+    const cli = flag(argv, '--cli') || 'claude';
     const res = await fetchImpl(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-kovan-token': token },
+      headers: {
+        'content-type': 'application/json',
+        'x-kovan-token': token,
+        'x-kovan-cli': cli === 'codex' || cli === 'gemini' ? cli : 'claude',
+      },
       body,
       redirect: 'error',
-      signal: AbortSignal.timeout(timeoutFor(event, env)),
+      signal: AbortSignal.timeout(timeoutFor(event, env, cli === 'codex' || cli === 'gemini' ? cli : 'claude')),
     });
     const text = await res.text();
     if (res.ok && text.trim().startsWith('{')) return text.trim();
   } catch { /* down, slow, or not a decision */ }
   return '';
+}
+
+function hookCli(argv) {
+  const cli = flag(argv, '--cli') || 'claude';
+  return cli === 'codex' || cli === 'gemini' ? cli : 'claude';
+}
+
+/**
+ * What the forwarder process should print and which status it should exit with.
+ * Gemini BeforeTool with no explicit allow or deny exits 2 and writes a deny.
+ */
+export async function resolveHook(body, argv = [], env = {}, opts = {}) {
+  let event = '';
+  try { event = JSON.parse(body).hook_event_name || ''; } catch { event = ''; }
+  const cli = hookCli(argv);
+  let out = '';
+  try { out = await forwardHook(body, argv, env, opts); } catch { out = ''; }
+  if (cli === 'gemini' && event === 'BeforeTool' && !explicitGeminiDecision(out)) {
+    const deny = geminiDenyBody();
+    return { stdout: `${JSON.stringify(deny)}\n`, stderr: `${deny.reason}\n`, exitCode: 2 };
+  }
+  return { stdout: out, stderr: '', exitCode: 0 };
 }

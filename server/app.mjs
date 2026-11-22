@@ -9,6 +9,7 @@ import { readSkillShelf } from './knowledge.mjs';
 import { readUsage } from './usage.mjs';
 import { checkDept, checkEffort, checkModel, checkRule } from './input.mjs';
 import { tokenMatches } from './token.mjs';
+import { injectLaunchToken } from './page-token.mjs';
 import {
   CONTENT_SECURITY_POLICY, hostAllowed, isJsonContentType, originAllowed, parseHostHeader, readBody, resolveStatic,
 } from './guard.mjs';
@@ -48,6 +49,7 @@ export function createApp({
   refreshConnectors = async () => getConnectors(),
   phone = null,
   ledger = null,
+  replay = null,
   reach = null,
 }) {
   const baseHeaders = {
@@ -101,10 +103,7 @@ export function createApp({
     if (path.extname(file) === '.html') {
       let html = fs.readFileSync(file, 'utf8');
       const phonePage = html.includes('name="kovan-phone"');
-      if (!phonePage && loopbackHost(req.headers.host) && !html.includes('name="kovan-token"') && /^[a-f0-9]{64}$/i.test(token)) {
-        const meta = `<meta name="kovan-token" content="${token}" />`;
-        html = html.includes('<head>') ? html.replace('<head>', `<head>\n  ${meta}`) : `${meta}${html}`;
-      }
+      if (!phonePage && loopbackHost(req.headers.host)) html = injectLaunchToken(html, token);
       res.writeHead(200, { ...baseHeaders, 'content-type': 'text/html; charset=utf-8', 'content-security-policy': CONTENT_SECURITY_POLICY });
       return res.end(html);
     }
@@ -199,6 +198,25 @@ export function createApp({
         if (p === '/api/note' && req.method === 'GET') { const n = vault.note(url.searchParams.get('id') || ''); return n ? send(res, 200, n) : send(res, 404, { error: 'no such note' }); }
         if (p === '/api/usage' && req.method === 'GET') return send(res, 200, readUsage(hive.runs()));
         if (p === '/api/costs' && req.method === 'GET') return send(res, 200, ledger ? ledger.summary() : {});
+        if (p === '/api/replay' && req.method === 'GET') {
+          if (!replay) return send(res, 200, { enabled: false, events: [] });
+          const q = url.searchParams;
+          return send(res, 200, {
+            enabled: replay.enabled,
+            events: replay.search({
+              q: q.get('q') || '',
+              cli: q.get('cli') || '',
+              project: q.get('project') || '',
+              status: q.get('status') || '',
+              from: q.get('from') || '',
+              to: q.get('to') || '',
+            }).slice(-200),
+          });
+        }
+        if (p === '/api/replay/session' && req.method === 'GET') {
+          if (!replay) return send(res, 200, { enabled: false, events: [] });
+          return send(res, 200, { enabled: replay.enabled, events: replay.timeline(url.searchParams.get('id') || '') });
+        }
         if (p === '/api/phone/pending' && req.method === 'GET') {
           const pending = phoneQueue(req);
           return send(res, pending.status, pending.body);
@@ -244,7 +262,9 @@ export function createApp({
           if (p === '/api/hooks') {
             const ac = new AbortController();
             req.on('close', () => { if (!res.writableEnded) ac.abort(); });
-            const out = await live.handleHook(body, { signal: ac.signal });
+            const headerCli = String(req.headers['x-kovan-cli'] || 'claude');
+            const cli = headerCli === 'codex' || headerCli === 'gemini' ? headerCli : 'claude';
+            const out = await live.handleHook(body, { signal: ac.signal, cli });
             return send(res, 200, out || {});
           }
           if (p === '/api/live/answer') {

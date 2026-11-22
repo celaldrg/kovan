@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import fs from 'node:fs';
 import path from 'node:path';
+import { prepareIndexHtml } from './server/page-token.mjs';
 
 const apiPort = Number(process.env.KOVAN_PORT || 4700);
 const apiOrigin = `http://127.0.0.1:${apiPort}`;
@@ -20,16 +21,15 @@ export default defineConfig({
   },
   plugins: [{
     name: 'kovan-token',
+    apply: 'serve',
     transformIndexHtml: {
       order: 'pre',
       handler(html) {
-        if (html.includes('name="kovan-phone"') || html.includes('name="kovan-token"')) return html;
         const file = process.env.KOVAN_TOKEN_FILE
           || path.join(process.env.KOVAN_DATA || path.resolve(__dirname, 'data'), 'token');
         let token = '';
         try { token = fs.readFileSync(file, 'utf8').trim(); } catch { token = ''; }
-        if (!/^[a-f0-9]{64}$/i.test(token)) return html;
-        return html.replace('<head>', `<head>\n  <meta name="kovan-token" content="${token}" />`);
+        return prepareIndexHtml(html, { command: 'serve', token });
       },
     },
   }],

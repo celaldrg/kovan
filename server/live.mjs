@@ -3,6 +3,8 @@
 // sessions that have never reported a hook.
 import path from 'node:path';
 import { parseHook, describeToolCall, permissionDecision, projectName, redactPaths } from '../shared/hooks.js';
+import { adaptHook, hookDecision, cliLabel, geminiDenyBody } from '../shared/agents.js';
+import { approvalWaits } from './hook-client.mjs';
 
 const PALETTE = ['#5b8def', '#3ee6c8', '#f5b13d', '#f472b6', '#a3e635', '#c084fc', '#fb923c', '#38bdf8'];
 
@@ -24,7 +26,7 @@ function zoneKey(cwd) {
   return `${name}-${(h >>> 0).toString(16).slice(0, 4)}`;
 }
 
-export function createLive({ emit = () => {}, now = () => Date.now(), permissionWaitMs = 110000, gate = null } = {}) {
+export function createLive({ emit = () => {}, now = () => Date.now(), permissionWaitMs = null, gate = null, onRecord = null } = {}) {
   const sessions = new Map();
   const subs = new Map();
   const pending = new Map();
@@ -39,6 +41,7 @@ export function createLive({ emit = () => {}, now = () => Date.now(), permission
         id, cwd: cwd || '', project: projectName(cwd || ''), model: '', title: '',
         state: 'idle', activity: 'session started', updated: now(), started: now(),
         hooked: false, source: 'claude', attention: '',
+        readOnly: false, approvals: 'hooks', note: '', always: true,
       };
       sessions.set(id, s);
     }
@@ -65,12 +68,19 @@ export function createLive({ emit = () => {}, now = () => Date.now(), permission
     if (state !== 'needs-you') session.attention = '';
   }
 
+  function record(event) {
+    if (!onRecord) return;
+    try { onRecord(event); } catch { /* recording must not break the hive */ }
+  }
+
   function apply(ev) {
     hooked = true;
     if (ev.name === 'SubagentStart' || ev.name === 'SubagentStop') {
       const parent = ensureSession(ev.sessionId, ev.cwd);
       parent.hooked = true;
-      parent.source = 'claude';
+      if (ev.cli) parent.source = ev.cli;
+      parent.readOnly = false;
+      parent.approvals = 'hooks';
       mark(parent, 'working', ev.name === 'SubagentStart' ? `spawned ${ev.agentType || 'subagent'}` : parent.activity);
       const sid = ev.agentId || `${ev.sessionId}:${ev.agentType || 'subagent'}`;
       if (ev.name === 'SubagentStop') {
@@ -89,14 +99,17 @@ export function createLive({ emit = () => {}, now = () => Date.now(), permission
 
     if (ev.name === 'SessionEnd') {
       for (const [id, sub] of subs) if (sub.parentId === ev.sessionId) subs.delete(id);
-      for (const [id, p] of pending) if (p.sessionId === ev.sessionId) { p.finish({}); }
+      for (const [id, p] of pending) if (p.sessionId === ev.sessionId) { p.finish(p.cli === 'gemini' ? geminiDenyBody() : {}); }
       sessions.delete(ev.sessionId);
       return;
     }
 
     const session = ensureSession(ev.sessionId, ev.cwd);
     session.hooked = true;
-    session.source = 'claude';
+    if (ev.cli) session.source = ev.cli;
+    session.readOnly = false;
+    session.approvals = 'hooks';
+    if (ev.always === false) session.always = false;
     if (ev.model) session.model = ev.model;
     if (ev.title) session.title = ev.title;
 
@@ -106,6 +119,7 @@ export function createLive({ emit = () => {}, now = () => Date.now(), permission
     }
     if (ev.name === 'UserPromptSubmit') {
       mark(session, 'working', ev.prompt || 'working');
+      record({ sessionId: session.id, cli: session.source, project: session.project, status: 'working', kind: 'prompt', text: ev.prompt || session.activity, at: now() });
       return;
     }
     if (ev.name === 'PreToolUse' || ev.name === 'PostToolUse') {
@@ -119,6 +133,7 @@ export function createLive({ emit = () => {}, now = () => Date.now(), permission
         sub.updated = now();
       }
       mark(session, 'working', ev.name === 'PostToolUse' ? `finished ${line}` : line);
+      record({ sessionId: session.id, cli: session.source, project: session.project, status: 'working', kind: 'tool', tool: d.tool, text: line, at: now() });
       return;
     }
     if (ev.name === 'Stop') {
@@ -152,6 +167,12 @@ export function createLive({ emit = () => {}, now = () => Date.now(), permission
   function openPermission(ev) {
     const session = ensureSession(ev.sessionId, ev.cwd);
     session.hooked = true;
+    if (ev.cli) {
+      session.source = ev.cli;
+      session.readOnly = false;
+      session.approvals = ev.approvals || 'hooks';
+      session.always = ev.always !== false;
+    }
     const d = describeToolCall(ev.toolName, ev.toolInput);
     const beeId = ev.agentId && subs.has(ev.agentId) ? ev.agentId : session.id;
     const id = `p_${Math.random().toString(36).slice(2, 10)}`;
@@ -167,15 +188,33 @@ export function createLive({ emit = () => {}, now = () => Date.now(), permission
     return { id, beeId, sessionId: session.id, since, tool: d.tool, command: d.command, diff: d.diff, file: d.file, suggestions: ev.permissionSuggestions, toolName: ev.toolName, toolInput: ev.toolInput };
   }
 
-  function handleHook(raw, { signal } = {}) {
-    const ev = parseHook(raw);
+  function decided(body) {
+    if (!body || typeof body !== 'object') return false;
+    if (body.hookSpecificOutput) return true;
+    if (body.decision === 'allow' || body.decision === 'deny') return true;
+    if (body.reply === 'once' || body.reply === 'always' || body.reply === 'reject') return true;
+    return false;
+  }
+
+  function handleHook(raw, { signal, cli } = {}) {
+    const adapted = adaptHook(raw, cli || 'claude');
+    if (!adapted) return Promise.resolve({});
+    const ev = parseHook(adapted.body);
     if (!ev) return Promise.resolve({});
+    ev.cli = adapted.cli;
+    ev.always = adapted.always;
     if (raw && raw.usage && gate?.noteUsage) {
       const messageId = typeof raw.message_id === 'string' ? raw.message_id : (typeof raw.uuid === 'string' ? raw.uuid : '');
-      gate.noteUsage({
+      const entry = gate.noteUsage({
         source: 'hook', sessionId: ev.sessionId, cwd: ev.cwd, model: ev.model || (typeof raw.model === 'string' ? raw.model : ''),
         usage: raw.usage, messageId, at: now(),
       });
+      if (entry) {
+        record({
+          sessionId: ev.sessionId, cli: ev.cli, project: projectName(ev.cwd), status: entry.priced ? 'priced' : 'unknown',
+          kind: 'cost', text: entry.priced ? 'priced from reported tokens' : 'cost unknown', at: now(),
+        });
+      }
     }
     if (ev.name !== 'PermissionRequest') {
       apply(ev);
@@ -187,27 +226,34 @@ export function createLive({ emit = () => {}, now = () => Date.now(), permission
     const block = gate?.blockPermission?.(session);
     if (block?.level === 'stop') {
       session.attention = block.message;
-      const body = permissionDecision('deny', ev);
+      const body = hookDecision(ev.cli, 'deny', ev, permissionDecision);
       if (body.hookSpecificOutput?.decision) body.hookSpecificOutput.decision.message = block.message;
+      else if (typeof body.reason === 'string') body.reason = block.message;
       changed();
+      record({ sessionId: session.id, cli: session.source, project: session.project, status: 'denied', kind: 'approval', text: block.message, at: now() });
       return Promise.resolve(body);
     }
     const card = openPermission(ev);
+    const unanswered = () => (ev.cli === 'gemini' ? geminiDenyBody() : {});
+    const holdMs = permissionWaitMs != null
+      ? permissionWaitMs
+      : approvalWaits(ev.cli === 'gemini' ? 'gemini' : ev.cli === 'codex' ? 'codex' : 'claude').serverMs;
     let finish = () => {};
     const result = new Promise(resolve => {
       let settled = false;
-      const timer = setTimeout(() => finish({}), permissionWaitMs);
-      if (signal) signal.addEventListener('abort', () => finish({}), { once: true });
+      const timer = setTimeout(() => finish(unanswered()), holdMs);
+      if (signal) signal.addEventListener('abort', () => finish(unanswered()), { once: true });
       finish = (body) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
         pending.delete(card.id);
         const session = sessions.get(card.sessionId);
-        const answered = body && body.hookSpecificOutput;
+        const answered = decided(body);
         if (session && !permsFor(session.id).length && session.state === 'needs-you' && !answered) {
           session.state = 'working';
           session.activity = 'waiting in the terminal';
+          record({ sessionId: session.id, cli: session.source, project: session.project, status: 'timeout', kind: 'approval', text: 'no decision', tool: card.tool, at: now() });
         }
         const sub = subs.get(card.beeId);
         if (sub && !permsFor(sub.id).length && sub.state === 'needs-you' && !answered) sub.state = 'working';
@@ -215,7 +261,7 @@ export function createLive({ emit = () => {}, now = () => Date.now(), permission
         changed();
       };
     });
-    pending.set(card.id, { ...card, finish, raw: ev });
+    pending.set(card.id, { ...card, finish, raw: ev, cli: ev.cli, always: ev.always !== false });
     changed();
     return result;
   }
@@ -228,20 +274,28 @@ export function createLive({ emit = () => {}, now = () => Date.now(), permission
     if ((behavior === 'allow' || behavior === 'always') && gate?.blockPermission?.(sessionForGate)?.level === 'stop') {
       behavior = 'deny';
     }
-    const body = permissionDecision(behavior, {
+    const cli = item.cli || 'claude';
+    const body = hookDecision(cli, behavior, {
       ...item.raw,
       permissionSuggestions: item.suggestions,
       toolName: item.toolName,
       toolInput: item.toolInput,
-    });
+    }, permissionDecision);
+    if (!decided(body)) return false;
+    if (item.deliver && item.deliver(body) === false) return false;
     if (behavior === 'deny' && gate?.blockPermission?.(sessionForGate)?.level === 'stop') {
       const block = gate.blockPermission(sessionForGate);
       if (body.hookSpecificOutput?.decision) body.hookSpecificOutput.decision.message = block.message;
+      else if (typeof body.reason === 'string') body.reason = block.message;
     }
     const session = sessions.get(item.sessionId);
     if (session) {
       session.activity = clip(behavior === 'deny' ? `denied ${item.tool}` : `allowed ${item.tool}`);
       if (permsFor(session.id).length <= 1) session.state = 'working';
+      record({
+        sessionId: session.id, cli: session.source, project: session.project,
+        status: behavior === 'deny' ? 'denied' : 'allowed', kind: 'approval', tool: item.tool, text: session.activity, at: now(),
+      });
     }
     const sub = subs.get(item.beeId);
     if (sub && permsFor(sub.id).length <= 1) sub.state = 'working';
@@ -256,13 +310,68 @@ export function createLive({ emit = () => {}, now = () => Date.now(), permission
     if (existing?.hooked) return;
     const session = ensureSession(rec.id, rec.cwd);
     if (session.hooked) return;
-    session.source = rec.source === 'codex' ? 'codex' : 'claude';
+    const known = ['claude', 'codex', 'gemini', 'opencode', 'aider'];
+    session.source = known.includes(rec.source) ? rec.source : 'claude';
+    session.readOnly = rec.readOnly !== false;
+    session.approvals = rec.approvals || 'none';
+    session.note = typeof rec.note === 'string' ? rec.note : session.note;
+    session.always = false;
     if (rec.model) session.model = rec.model;
     if (rec.title) session.title = rec.title;
     session.state = rec.state || 'idle';
     if (rec.activity) session.activity = clip(rec.activity);
     if (rec.updated) session.updated = rec.updated;
+    if (Array.isArray(rec.usages)) {
+      for (const usage of rec.usages) {
+        if (!usage || !usage.usage || !usage.messageId) continue;
+        const entry = gate?.noteUsage?.({
+          source: 'jsonl', sessionId: session.id, cwd: session.cwd, model: usage.model || session.model,
+          usage: usage.usage, messageId: usage.messageId, at: usage.at || now(),
+        });
+        if (entry) {
+          record({
+            sessionId: session.id, cli: session.source, project: session.project,
+            status: entry.priced ? 'priced' : 'unknown', kind: 'cost', text: entry.priced ? 'priced from reported tokens' : 'cost unknown', at: entry.at || now(),
+          });
+        }
+      }
+    }
+    if (Array.isArray(rec.events)) {
+      for (const event of rec.events) {
+        record({ ...event, sessionId: session.id, cli: session.source, project: session.project, at: event.at || session.updated });
+      }
+    }
     changed();
+  }
+
+  /** A permission that is answered over another CLI's local API, not a stdin hook. */
+  function holdExternal(spec) {
+    if (!spec || !spec.sessionId || !spec.requestId) return '';
+    for (const item of pending.values()) if (item.externalId === spec.requestId) return item.id;
+    const ev = {
+      name: 'PermissionRequest', sessionId: spec.sessionId, cwd: spec.cwd || '', cli: spec.cli || 'opencode',
+      toolName: spec.toolName || 'tool', toolInput: spec.toolInput || {}, permissionSuggestions: [],
+      always: spec.cli === 'opencode', approvals: 'api',
+    };
+    const session = ensureSession(ev.sessionId, ev.cwd);
+    session.hooked = true;
+    session.source = ev.cli;
+    session.readOnly = false;
+    session.approvals = 'api';
+    session.always = true;
+    if (spec.model) session.model = spec.model;
+    if (spec.title) session.title = spec.title;
+    hooked = true;
+    const card = openPermission(ev);
+    let finish = () => {};
+    finish = (body) => {
+      pending.delete(card.id);
+      changed();
+      return body;
+    };
+    pending.set(card.id, { ...card, finish, raw: ev, cli: ev.cli, always: true, externalId: spec.requestId, deliver: spec.deliver });
+    changed();
+    return card.id;
   }
 
   function beeView(session, kind, extra = {}) {
@@ -276,12 +385,16 @@ export function createLive({ emit = () => {}, now = () => Date.now(), permission
       project: session.project,
       zone: zoneKey(session.cwd),
       name: extra.name || session.title || session.project || 'session',
-      role: extra.role || session.model || (session.source === 'codex' ? 'Codex' : 'Claude Code'),
+      role: extra.role || session.model || cliLabel(session.source),
       model: session.model || '',
       state: extra.state || session.state,
       activity: extra.activity || session.activity || '',
       updated: extra.updated || session.updated,
       source: session.source,
+      readOnly: session.readOnly === true,
+      approvals: session.approvals || 'none',
+      note: session.note || '',
+      always: session.always !== false,
       attention: session.attention || '',
       permission: card ? { id: card.id, tool: card.tool, command: card.command, diff: card.diff, file: card.file, since: card.since } : null,
       cost: mark.cost || null,
@@ -320,6 +433,9 @@ export function createLive({ emit = () => {}, now = () => Date.now(), permission
         diff: item.diff,
         file: item.file,
         since: item.since,
+        cli: session?.source || item.cli || 'claude',
+        always: item.always !== false,
+        externalId: item.externalId || '',
       });
     }
     queue.sort((a, b) => a.since - b.since);
@@ -336,5 +452,20 @@ export function createLive({ emit = () => {}, now = () => Date.now(), permission
     };
   }
 
-  return { handleHook, answer, applyLog, snapshot, changed };
+  function releaseExternal(requestId) {
+    for (const [id, item] of pending) {
+      if (item.externalId !== requestId) continue;
+      pending.delete(id);
+      const session = sessions.get(item.sessionId);
+      if (session && !permsFor(session.id).length && session.state === 'needs-you') {
+        session.state = 'working';
+        session.activity = 'waiting in the tool';
+      }
+      changed();
+      return true;
+    }
+    return false;
+  }
+
+  return { handleHook, answer, applyLog, holdExternal, releaseExternal, snapshot, changed };
 }

@@ -1,0 +1,3 @@
+{"sessionId":"gem_atlas","projectHash":"atlas","startTime":"2026-04-03T12:00:00.000Z","lastUpdated":"2026-04-03T12:00:00.000Z","kind":"main","directories":["/work/atlas-notes"]}
+{"id":"u1","timestamp":"2026-04-03T12:00:02.000Z","type":"user","content":[{"text":"Summarise the atlas notes"}]}
+{"id":"g1","timestamp":"2026-04-03T12:00:05.000Z","type":"gemini","model":"gemini-2.5-flash","content":[{"text":"Notes summarised."}],"toolCalls":[{"id":"c1","name":"read_file","args":{"file_path":"/work/atlas-notes/notes.md"},"status":"success","timestamp":"2026-04-03T12:00:04.000Z"}],"tokens":{"input":1000,"output":200,"cached":100,"thoughts":50,"tool":20,"total":1370}}

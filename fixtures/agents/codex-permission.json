@@ -1,0 +1,8 @@
+{
+  "session_id": "codex_harbor",
+  "cwd": "/work/harbor-docs",
+  "hook_event_name": "PermissionRequest",
+  "tool_name": "Bash",
+  "tool_input": { "command": "git status" },
+  "permission_mode": "default"
+}

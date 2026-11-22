@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { installHooks, uninstallHooks } from '../server/hooks-settings.mjs';
+import { installOptionalHooks, uninstallOptionalHooks } from '../server/cli-hooks.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const forwarder = path.join(here, 'hook-forward.mjs');
@@ -58,10 +59,26 @@ try {
     console.log('Start Kovan with `npm start`, then open a Claude Code session.');
     console.log('Each launch writes a new token in the data directory. The hook reads data/token unless KOVAN_DATA is set.');
     console.log('If Kovan is stopped, Claude Code keeps its own permission prompt.');
+    try {
+      const extra = installOptionalHooks({ port: portFrom(argv), forwarder });
+      if (!extra.installed.length) console.log('Codex and Gemini CLI were not detected, so no extra hooks were written.');
+      for (const item of extra.installed) {
+        console.log(`Kovan hooks installed for ${item.cli} in ${item.file}`);
+        console.log('Gemini BeforeTool exits 2 with a deny unless you choose Allow. Codex PermissionRequest prints nothing and leaves its own prompt.');
+      }
+    } catch (err) {
+      console.error(err.message || err);
+    }
   } else {
     const result = uninstallHooks({ file });
     if (!result.removed) console.log(`No settings file at ${file}`);
     else console.log(`Kovan hooks removed from ${result.file}\n  backup  ${result.backup}`);
+    try {
+      const extra = uninstallOptionalHooks();
+      for (const item of extra.removed) console.log(`Kovan hooks removed for ${item.cli} from ${item.file}`);
+    } catch (err) {
+      console.error(err.message || err);
+    }
   }
 } catch (err) {
   console.error(err.message || err);

@@ -22,13 +22,15 @@ import { mark, wordmark } from './brand';
 import { parseSchedule, describeRule, isOutbound, detectSwarm } from '../../shared/schedule.js';
 import { pickDepartment, guessDepartment } from '../../shared/departments.js';
 import { liveCrew, paintQueue, paintPermit, paintSessions, noteNewPermits, permitCard } from './live-view';
+import { paintReplay } from './replay-view';
+import { cliLabel, costLabel } from './cli-label';
 import { money, paintBanner, paintDrawer, paintMeter, type PhoneDevice } from './costs-view';
 import type { State, Job, ChatMsg, Pulse, Routine, Dept, LiveSnap, CostSummary } from './types';
 
 const app = document.getElementById('app')!;
 app.innerHTML = `
   <div class="splash" id="splash"><div class="splash-grid"></div><div class="splash-in">
-    <div class="sp-brand">${mark(44, 'sp')}<div class="splash-word">${wordmark()}</div><span class="sp-ver">v0.2.0</span></div>
+    <div class="sp-brand">${mark(44, 'sp')}<div class="splash-word">${wordmark()}</div><span class="sp-ver">v0.3.0</span></div>
     <div class="sp-kicker">Live hive for coding agents</div>
     <h1 class="sp-title">Every session,<br><em>in one living hive.</em></h1>
     <ul class="sp-steps" id="spSteps"><li style="--i:0"><i></i><span>Indexing the knowledge vault</span></li><li style="--i:1"><i></i><span>Bringing agents online</span></li><li style="--i:2"><i></i><span>Routing engine ready</span></li></ul>
@@ -49,6 +51,7 @@ app.innerHTML = `
     <div class="right">
       <button class="modebtn" id="modeBtn" type="button" title="Switch between the live hive and company mode">Company</button>
       <div class="meter" id="meter" title="Spend from reported token usage"><div><b id="mSpend">$0</b><small>today</small></div><div><b id="mBudget">—</b><small>budget</small></div></div>
+      <button class="ibtn" id="replayBtn" type="button" title="Replay and search (R)">${icon('Search', 17)}</button>
       <button class="ibtn" id="costBtn" type="button" title="Costs, budgets, and phone approvals">${icon('Coins', 17)}</button>
       <button class="ibtn" data-k="t" title="Theme (T)">${icon('SunMoon', 17)}</button>
       <button class="ibtn" data-k="f" title="Focus mode (F)">${icon('Focus', 17)}</button>
@@ -508,8 +511,9 @@ function closeChat() { chatWith = null; $('chat').classList.remove('open'); docu
 function setNav(view: string) {
   const nav = $('nav');
   nav.querySelectorAll<HTMLElement>('button').forEach(b => b.classList.toggle('on', b.dataset.view === view));
-  const on = nav.querySelector<HTMLElement>('button.on')!;
+  const on = nav.querySelector<HTMLElement>('button.on');
   const ind = nav.querySelector<HTMLElement>('.seg-ind')!;
+  if (!on) { ind.style.width = '0px'; return; }
   ind.style.width = on.offsetWidth + 'px'; ind.style.transform = `translateX(${on.offsetLeft}px)`;
 }
 async function openSheet(kind: string) {
@@ -525,6 +529,7 @@ async function openSheet(kind: string) {
   if (kind === 'board') paintBoard(body, st, pickJob);
   if (kind === 'departments') paintDepartments(body);
   if (kind === 'agents') { if (mode === 'live') paintSessions(body, liveSnap, id => { closeSheet(); openLiveBee(id); }); else paintAgents(body); }
+  if (kind === 'replay') await paintReplay(body);
 }
 function closeSheet() { sheet?.stop?.(); sheet = null; $('sheet').classList.remove('open'); setNav('hive'); setTimeout(() => { if (!sheet) $('sheetBody').innerHTML = ''; }, 300); }
 $('sheetClose').onclick = closeSheet;
@@ -548,6 +553,7 @@ function key(k: string) {
   if (k === 'b') return sheet?.kind === 'board' ? closeSheet() : openSheet('board');
   if (k === 'd') return sheet?.kind === 'departments' ? closeSheet() : openSheet('departments');
   if (k === 'a') return sheet?.kind === 'agents' ? closeSheet() : openSheet('agents');
+  if (k === 'r') return sheet?.kind === 'replay' ? closeSheet() : openSheet('replay');
   if (k === 't') return toggleTheme();
   if (k === 'f') return toggleFocus();
 }
@@ -863,7 +869,8 @@ function openLiveBee(id: string) {
   const el = $('chat');
   el.innerHTML = `<div class="ch-head">${hexAvatar(bee.name, color, 44)}<div class="who"><b>${esc(bee.name)}</b><span>${esc(bee.role)} · <em style="color:${color}">${esc(bee.project)}</em></span></div><button class="ibtn x" title="Close (Esc)">${icon('X', 17)}</button>
     <p class="does">${esc(bee.activity || 'Quiet')}</p>
-    <div class="chips2"><span class="c">${esc(bee.state)}</span><span class="c dim">${esc(bee.source === 'codex' ? 'Codex' : 'Claude Code')}</span></div></div>
+    <div class="chips2"><span class="c">${esc(bee.state)}</span><span class="c dim">${esc(cliLabel(bee.source))}</span><span class="c dim">${esc(costLabel(bee.cost))}</span>${bee.readOnly ? `<span class="c dim">read-only</span>` : ''}</div></div>
+    ${bee.note ? `<p class="does">${esc(bee.note)}</p>` : ''}
     <div class="msgs">${permit ? permitCard(permit, bee) : `<div class="msg system"><div class="md">${esc(bee.attention || 'This session is not waiting on you.')}</div></div>`}</div>`;
   el.dataset.bee = id;
   el.dataset.state = bee.state + (permit?.id || '');
@@ -879,7 +886,7 @@ function flyToProject(id: string) {
   const zone = liveSnap.zones.find(z => z.id === id);
   if (!zone) return;
   const bees = liveSnap.sessions.filter(s => s.zone === id);
-  $('dfocus').innerHTML = `<article class="dcard compact" style="--c:${zone.color}"><header><span class="dtile">${icon('Folder', 20)}</span><div class="dtitle"><b>${esc(zone.name)}</b><span>${zone.source === 'codex' ? 'Codex' : 'Claude Code'}</span></div></header>
+  $('dfocus').innerHTML = `<article class="dcard compact" style="--c:${zone.color}"><header><span class="dtile">${icon('Folder', 20)}</span><div class="dtitle"><b>${esc(zone.name)}</b><span>${esc(cliLabel(zone.source))}</span></div></header>
     <p class="mission">${bees.length} session${bees.length === 1 ? '' : 's'} in this project.</p>
     <div class="dteam"><div>${bees.map(b => `<button class="mem ${b.state === 'needs-you' ? 'approval' : b.state}" data-bee="${esc(b.id)}" title="${esc(b.name)}">${hexAvatar(b.name, zone.color, 30)}</button>`).join('')}</div></div>
     <footer><button class="dbtn fly" id="leaveLive">${icon('LocateFixed', 14)}Overview</button></footer></article>`;
@@ -936,6 +943,7 @@ function openDrawer() {
     openDrawer();
   });
 }
+$('replayBtn').onclick = () => { if (sheet?.kind === 'replay') closeSheet(); else openSheet('replay'); };
 $('costBtn').onclick = async () => {
   if ($('drawer').classList.contains('on')) { $('drawer').classList.remove('on'); return; }
   try { devices = (await get<{ devices: PhoneDevice[] }>('/api/phone/devices')).devices; } catch { devices = []; }

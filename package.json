@@ -1,7 +1,7 @@
 {
   "name": "kovan",
-  "version": "0.2.0",
-  "description": "Kovan — all your Claude Code and Codex sessions in one live 3D hive. See who's working, who's stuck and who needs you, and approve without hunting through terminal tabs.",
+  "version": "0.3.0",
+  "description": "Kovan — Claude Code, Codex, Gemini CLI, OpenCode and Aider sessions in one live 3D hive, with local replay and company-mode providers.",
   "type": "module",
   "author": "Celalettin Durğaç (https://celaldrg.github.io)",
   "license": "MIT",

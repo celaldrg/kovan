@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { forwardHook, hookEndpoint, timeoutFor } from './hook-client.mjs';
+import { forwardHook, hookEndpoint, resolveHook, timeoutFor, approvalWaits, GEMINI_FORWARD_TIMEOUT_MS, GEMINI_HOOK_TIMEOUT_MS, GEMINI_SERVER_WAIT_MS } from './hook-client.mjs';
+import { GEMINI_DENY_REASON } from '../shared/agents.js';
 
 test('hook endpoint stays on loopback', () => {
   assert.equal(hookEndpoint(4700, ''), 'http://127.0.0.1:4700/api/hooks');
@@ -47,5 +48,91 @@ test('forwarder sends the token and does not invent an allow', async () => {
     fetchImpl: async () => { throw new Error('should not be called'); },
   });
   assert.equal(missing, '');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+function denyResult(result) {
+  const body = JSON.parse(result.stdout);
+  assert.equal(result.exitCode, 2);
+  assert.equal(body.decision, 'deny');
+  assert.equal(body.reason, GEMINI_DENY_REASON);
+  assert.match(result.stderr, /Nothing was allowed/);
+  assert.equal(body.decision === 'allow', false);
+}
+
+test('a long permission timeout stays under each CLI hook timeout', () => {
+  const env = { KOVAN_PERMISSION_TIMEOUT_MS: '500000' };
+  for (const cli of ['gemini', 'codex', 'claude']) {
+    const waits = approvalWaits(cli, env);
+    assert.ok(waits.serverMs < waits.forwarderMs, cli);
+    assert.ok(waits.forwarderMs < waits.hookMs, cli);
+  }
+  assert.equal(approvalWaits('gemini', env).hookMs, GEMINI_HOOK_TIMEOUT_MS);
+  assert.equal(timeoutFor('BeforeTool', env, 'gemini'), approvalWaits('gemini', env).forwarderMs);
+  assert.ok(timeoutFor('BeforeTool', env, 'gemini') < GEMINI_HOOK_TIMEOUT_MS);
+  assert.equal(timeoutFor('PermissionRequest', env, 'codex'), approvalWaits('codex', env).forwarderMs);
+  assert.ok(timeoutFor('PermissionRequest', env, 'claude') < 120000);
+  const tiny = approvalWaits('gemini', { KOVAN_PERMISSION_TIMEOUT_MS: '1000' });
+  assert.ok(tiny.serverMs < tiny.forwarderMs);
+  assert.ok(tiny.forwarderMs < tiny.hookMs);
+});
+
+test('Gemini BeforeTool fails closed on every path that is not an explicit decision', async () => {
+  assert.ok(GEMINI_HOOK_TIMEOUT_MS > GEMINI_FORWARD_TIMEOUT_MS);
+  assert.ok(GEMINI_FORWARD_TIMEOUT_MS > GEMINI_SERVER_WAIT_MS);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kovan-gemini-hook-'));
+  const file = path.join(dir, 'token');
+  fs.writeFileSync(file, `${'ab'.repeat(32)}\n`);
+  const payload = JSON.stringify({
+    hook_event_name: 'BeforeTool',
+    session_id: 'gem_atlas',
+    tool_name: 'run_shell_command',
+    tool_input: { command: 'npm test' },
+  });
+  const argv = ['--cli', 'gemini', '--port', '4700', '--token-file', file];
+
+  denyResult(await resolveHook(payload, argv, {}, {
+    fetchImpl: async () => { throw new Error('down'); },
+  }));
+  denyResult(await resolveHook(payload, argv, {}, {
+    fetchImpl: async () => { throw new Error('timed out'); },
+  }));
+  denyResult(await resolveHook(payload, ['--cli', 'gemini', '--port', '4700'], {}, {
+    fetchImpl: async () => { throw new Error('should not be called'); },
+  }));
+  denyResult(await resolveHook(payload, argv, {}, {
+    fetchImpl: async () => ({ ok: false, text: async () => 'nope' }),
+  }));
+  denyResult(await resolveHook(payload, argv, {}, {
+    fetchImpl: async () => ({ ok: true, text: async () => '{}' }),
+  }));
+  denyResult(await resolveHook(payload, argv, {}, {
+    fetchImpl: async () => ({ ok: true, text: async () => 'not-json' }),
+  }));
+
+  const allowed = await resolveHook(payload, argv, {}, {
+    fetchImpl: async () => ({ ok: true, text: async () => '{"decision":"allow"}' }),
+  });
+  assert.equal(allowed.exitCode, 0);
+  assert.equal(JSON.parse(allowed.stdout).decision, 'allow');
+
+  const denied = await resolveHook(payload, argv, {}, {
+    fetchImpl: async () => ({ ok: true, text: async () => '{"decision":"deny","reason":"Denied in Kovan"}' }),
+  });
+  assert.equal(denied.exitCode, 0);
+  assert.equal(JSON.parse(denied.stdout).decision, 'deny');
+
+  const codex = await resolveHook(JSON.stringify({ hook_event_name: 'PermissionRequest', session_id: 'c', tool_name: 'Bash' }), ['--cli', 'codex', '--port', '4700', '--token-file', file], {}, {
+    fetchImpl: async () => { throw new Error('down'); },
+  });
+  assert.equal(codex.exitCode, 0);
+  assert.equal(codex.stdout, '');
+  assert.equal(codex.stdout.includes('allow'), false);
+
+  const claude = await resolveHook(JSON.stringify({ hook_event_name: 'PermissionRequest' }), ['--port', '4700'], {}, {
+    fetchImpl: async () => { throw new Error('should not be called'); },
+  });
+  assert.equal(claude.exitCode, 0);
+  assert.equal(claude.stdout, '');
   fs.rmSync(dir, { recursive: true, force: true });
 });

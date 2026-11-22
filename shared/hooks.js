@@ -1,3 +1,5 @@
+import { parseCodexRollout } from './agents.js';
+
 // Claude Code hook payloads and the permission reply Kovan sends back.
 // Event names and field shapes follow the Claude Code hooks reference
 // (SessionStart, SessionEnd, Notification, Stop, StopFailure, PreToolUse,
@@ -206,52 +208,13 @@ export function reduceClaudeJsonl(lines, fileSessionId = '') {
 
 /** Best-effort read of a Codex rollout JSONL. Unrecognised lines are skipped. */
 export function reduceCodexJsonl(lines, fileSessionId = '') {
-  let id = fileSessionId || '';
-  let cwd = '';
-  let model = '';
-  let state = 'idle';
-  let activity = '';
-  let updated = 0;
-  let saw = false;
-  for (const line of lines) {
-    if (!line || !line.trim()) continue;
-    let row;
-    try { row = JSON.parse(line); } catch { continue; }
-    if (!row || typeof row !== 'object') continue;
-    const ts = Date.parse(row.timestamp || '') || 0;
-    if (ts) updated = Math.max(updated, ts);
-    const payload = row.payload && typeof row.payload === 'object' ? row.payload : {};
-    if (row.type === 'session_meta') {
-      saw = true;
-      if (typeof payload.id === 'string' && payload.id) id = payload.id;
-      if (typeof payload.cwd === 'string') cwd = payload.cwd;
-      if (typeof payload.model === 'string') model = payload.model;
-      continue;
-    }
-    if (row.type === 'event_msg') {
-      const kind = payload.type;
-      if (kind === 'user_message') {
-        saw = true; state = 'working'; activity = clip(payload.message || payload.text || 'prompt', 180);
-      } else if (kind === 'agent_message') {
-        saw = true; state = 'idle'; activity = clip(payload.message || payload.text || '', 180);
-      } else if (kind === 'task_complete' || kind === 'turn_complete') {
-        saw = true; state = 'idle';
-      } else if (kind === 'error') {
-        saw = true; state = 'stuck'; activity = clip(payload.message || payload.error || 'error', 180);
-      }
-      continue;
-    }
-    if (row.type === 'response_item') {
-      if (payload.type === 'function_call' || payload.type === 'custom_tool_call') {
-        saw = true; state = 'working'; activity = clip(payload.name || payload.type || 'tool', 180);
-      } else if (payload.type === 'message' && payload.role === 'assistant') {
-        saw = true; state = 'idle';
-        activity = clip(textOf(payload.content) || activity, 180);
-      }
-    }
-  }
-  if (!saw || !id) return null;
-  return { id, cwd, model, title: '', state, activity, updated, source: 'codex' };
+  const row = parseCodexRollout(lines, fileSessionId);
+  if (!row) return null;
+  return {
+    id: row.id, cwd: row.cwd, model: row.model, title: row.title || '', state: row.state,
+    activity: row.activity, updated: row.updated, source: 'codex',
+    readOnly: true, approvals: 'none', note: row.note, usages: row.usages, events: row.events,
+  };
 }
 
 /** Sum every token bucket Claude records, including cache reads. */
