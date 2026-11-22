@@ -1,6 +1,12 @@
 // Model backends: the local Claude Code CLI (preferred), the Anthropic Messages API, or a
 // built-in demo writer so the hive is alive with no setup at all.
 import { spawn, spawnSync } from 'node:child_process';
+import { sumUsage } from '../shared/hooks.js';
+
+function packResult(text, usage, extra = {}) {
+  const reported = usage && typeof usage === 'object' ? usage : null;
+  return { text, tokens: reported ? sumUsage(reported) : 0, usage: reported, ...extra };
+}
 
 export const MODELS = ['sonnet', 'opus', 'haiku'];
 export const EFFORTS = ['', 'low', 'medium', 'high'];
@@ -73,8 +79,7 @@ function runCli(prompt, { model, effort, tools = true, timeoutMs = 10 * 60e3 }) 
       try {
         const j = JSON.parse(out);
         if (j.is_error) return reject(new Error(j.result || 'CLI error'));
-        const u = j.usage || {};
-        resolve({ text: String(j.result || '').trim(), tokens: (u.input_tokens || 0) + (u.output_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0) });
+        resolve(packResult(String(j.result || '').trim(), j.usage || null));
       } catch { reject(new Error(err.trim() || `claude exited ${code}`)); }
     });
     child.stdin.end((EFFORT_HINT[effort] ? EFFORT_HINT[effort] + '\n\n' : '') + prompt);
@@ -90,8 +95,7 @@ async function runApi(prompt, { model, effort, ids }) {
   });
   const j = await r.json();
   if (!r.ok) throw new Error(j?.error?.message || `API ${r.status}`);
-  const u = j.usage || {};
-  return { text: j.content.map(c => c.text || '').join('').trim(), tokens: (u.input_tokens || 0) + (u.output_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0) };
+  return packResult(j.content.map(c => c.text || '').join('').trim(), j.usage || null);
 }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -132,7 +136,7 @@ export function createAI(backend, cfg = {}) {
       if (backend === 'claude-cli') return runCli(prompt, { model, effort, tools: tools && kind !== 'route' && kind !== 'classify' });
       if (backend === 'api') return runApi(prompt, { model, effort, ids });
       await sleep(kind === 'chat' ? 700 : kind === 'route' ? 150 : 3500 + Math.random() * 5000);
-      return { text: demoText(kind, ctx) ?? '', tokens: kind === 'route' ? 0 : Math.round(900 + Math.random() * 4200), demo: true };
+      return { text: demoText(kind, ctx) ?? '', tokens: kind === 'route' ? 0 : Math.round(900 + Math.random() * 4200), usage: null, demo: true };
     },
   };
 }

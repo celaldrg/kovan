@@ -4,7 +4,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { sumUsage } from '../shared/hooks.js';
+import { sumUsage, projectName } from '../shared/hooks.js';
+import { usageFromClaudeRow } from '../shared/cost.js';
 
 export { sumUsage };
 
@@ -19,6 +20,29 @@ function* jsonlFiles(dir, since, depth = 0) {
     if (e.isDirectory() && depth < 3) yield* jsonlFiles(p, since, depth + 1);
     else if (e.name.endsWith('.jsonl')) { try { if (fs.statSync(p).mtimeMs >= since) yield p; } catch {} }
   }
+}
+
+/** Reported usage rows from Claude Code JSONL. Demo mode reads nothing. */
+export function collectUsageEntries(root, now = Date.now()) {
+  if (process.env.KOVAN_DEMO === '1') return [];
+  const dir = root || path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'projects');
+  const out = [];
+  const seen = new Set();
+  for (const file of jsonlFiles(dir, now - D7)) {
+    let text = '';
+    try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+    for (const line of text.split('\n')) {
+      if (!line.includes('"usage"')) continue;
+      let row;
+      try { row = JSON.parse(line); } catch { continue; }
+      const parsed = usageFromClaudeRow(row);
+      if (!parsed || seen.has(parsed.messageId)) continue;
+      seen.add(parsed.messageId);
+      parsed.project = projectName(parsed.cwd || '');
+      out.push(parsed);
+    }
+  }
+  return out;
 }
 
 export function readUsage(ownRuns = []) {

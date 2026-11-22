@@ -49,19 +49,30 @@ export function parseHostHeader(value) {
   return { host: m[1].toLowerCase(), port: m[2] == null ? null : Number(m[2]) };
 }
 
-export function hostAllowed(header, { port, names }) {
+export function hostAllowed(header, { port, names, extraHosts = [] }) {
   const parsed = parseHostHeader(header);
   if (!parsed) return false;
+  if (extraHosts.includes(parsed.host)) return true;
   if (parsed.port != null && parsed.port !== Number(port)) return false;
   return names.includes(parsed.host);
 }
 
+export function publicReach(origin) {
+  if (!origin || typeof origin !== 'string' || !origin.trim()) return null;
+  let url;
+  try { url = new URL(origin.trim()); } catch { return null; }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+  if (url.username || url.password) return null;
+  return { origin: url.origin, host: url.hostname.toLowerCase() };
+}
+
 /** Absent Origin is allowed (hooks, curl). Any other value must be this server. */
-export function originAllowed(origin, { port, names }) {
+export function originAllowed(origin, { port, names, extraOrigins = [] }) {
   if (origin == null || origin === '') return true;
   if (typeof origin !== 'string' || origin === 'null') return false;
   let url;
   try { url = new URL(origin); } catch { return false; }
+  if (extraOrigins.includes(url.origin)) return true;
   if (url.protocol !== 'http:') return false;
   if (url.username || url.password || url.search || url.hash) return false;
   if (url.pathname !== '/' && url.pathname !== '') return false;

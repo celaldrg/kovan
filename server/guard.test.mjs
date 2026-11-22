@@ -33,6 +33,10 @@ test('host and origin allowlists', () => {
   assert.equal(originAllowed('http://evil.example', { port: 4700, names }), false);
   assert.equal(originAllowed('null', { port: 4700, names }), false);
   assert.equal(originAllowed('http://127.0.0.1:9', { port: 4700, names }), false);
+  assert.equal(originAllowed('https://tunnel.example', { port: 4700, names }), false);
+  assert.equal(originAllowed('https://tunnel.example', { port: 4700, names, extraOrigins: ['https://tunnel.example'] }), true);
+  assert.equal(hostAllowed('tunnel.example', { port: 4700, names, extraHosts: ['tunnel.example'] }), true);
+  assert.equal(hostAllowed('evil.example', { port: 4700, names, extraHosts: ['tunnel.example'] }), false);
 });
 
 test('resolveStatic stays inside the root', () => {

@@ -13,7 +13,7 @@ import { icon } from './icons';
 type WState = 'idle' | 'working' | 'approval' | 'stuck';
 interface Bee {
   w: Worker; rig: THREE.Group; body: THREE.Group; wings: THREE.Object3D[]; cellRing: THREE.Mesh; arc: THREE.Mesh; alert: THREE.Mesh;
-  home: THREE.Vector3; state: WState; phase: number; flash: number; hoverK: number; lift: number;
+  home: THREE.Vector3; state: WState; phase: number; flash: number; hoverK: number; lift: number; flag: '' | 'runaway' | 'budget';
 }
 interface Zone { dept: Dept; center: THREE.Vector3; banner: THREE.Sprite; plate: THREE.Mesh; rim: THREE.Mesh; mast: THREE.Mesh; chip: HTMLElement; load: number; target: number; seed: number }
 interface Flight { head: THREE.Sprite; trail: THREE.Points; hist: THREE.Vector3[]; a: THREE.Vector3; b: THREE.Vector3; c: THREE.Vector3; t: number; dur: number }
@@ -377,7 +377,7 @@ export class Hive {
     rig.rotation.y = Math.atan2(-home.x, -home.z);
     rig.traverse(o => (o.userData.bee = w.id));
     this.own(rig);
-    this.bees.set(w.id, { w, rig, body, wings, cellRing, arc, alert, home, state: 'idle', phase: Math.random() * 10, flash: 0, hoverK: 0, lift: 0.9 });
+    this.bees.set(w.id, { w, rig, body, wings, cellRing, arc, alert, home, state: 'idle', phase: Math.random() * 10, flash: 0, hoverK: 0, lift: 0.9, flag: '' });
   }
 
   private buildDust() {
@@ -452,6 +452,9 @@ export class Hive {
       b.state = states[id] || 'idle';
       (b.alert.material as THREE.MeshBasicMaterial).color.set(b.state === 'stuck' ? 0xff6b6b : 0x3ee6c8);
     }
+  }
+  setFlags(flags: Record<string, 'runaway' | 'budget'>) {
+    for (const [id, b] of this.bees) b.flag = flags[id] || '';
   }
   /** Send a radial shock-wave across the floor (e.g. when a task lands). */
   ripple() { this.uniforms.uWave.value = 0.01; }
@@ -613,7 +616,11 @@ export class Hive {
       arcMat.opacity += ((working ? 0.9 : 0) - arcMat.opacity) * Math.min(1, dt * 5);
       b.arc.rotation.z = -t * 3 + b.phase;
       const al = b.alert.material as THREE.MeshBasicMaterial;
-      al.opacity = waiting ? 0.35 + Math.sin(t * 5) * 0.35 : stuck ? 0.3 + Math.sin(t * 3) * 0.25 : 0;
+      if (b.flag === 'runaway') al.color.set(0xf5b13d);
+      else if (b.flag === 'budget') al.color.set(0xff6b6b);
+      else al.color.set(stuck ? 0xff6b6b : 0x3ee6c8);
+      const flagged = b.flag === 'runaway' || b.flag === 'budget';
+      al.opacity = waiting ? 0.35 + Math.sin(t * 5) * 0.35 : stuck ? 0.3 + Math.sin(t * 3) * 0.25 : flagged ? 0.45 + Math.sin(t * 4) * 0.2 : 0;
       b.alert.scale.setScalar(waiting || stuck ? 1 + ((t * (waiting ? 0.9 : 0.45)) % 1) * 0.35 : 1);
     }
 

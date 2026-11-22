@@ -10,11 +10,11 @@
 
 **All your Claude Code and Codex sessions in one live 3D hive.** See who's working, who's stuck and who needs you, and approve without hunting through terminal tabs.
 
-Local-first · one command to attach hooks · demo runs with zero setup
+Local-first · cost and budgets · approve from your phone · demo runs with zero setup
 
 [![CI](https://github.com/celaldrg/kovan/actions/workflows/ci.yml/badge.svg)](https://github.com/celaldrg/kovan/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-f5a524.svg)](LICENSE)
-[![version](https://img.shields.io/badge/version-0.1.1-2dd4bf)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.2.0-2dd4bf)](CHANGELOG.md)
 ![Node 20+](https://img.shields.io/badge/node-%3E%3D20-2dd4bf)
 ![three.js](https://img.shields.io/badge/three.js-r170-black)
 
@@ -33,12 +33,12 @@ You have four Claude Code sessions open, and one of them has been sitting on a p
 <p align="center">
   <a href="assets/kovan-demo.mp4"><b>Watch the demo (MP4)</b></a>
   <br>
-  <sub>About 20 seconds from <code>npm run demo</code>: sessions at work, a bee that starts waiting, the approval card, Allow, then Sessions. The projects are fictional.</sub>
+  <sub>About 20 seconds from <code>npm run demo</code>: sessions at work, budget warnings, a runaway flag, the approval card, Allow, then Sessions. The projects are fictional.</sub>
 </p>
 
 <table>
   <tr>
-    <td colspan="2"><img src="assets/screenshot-hive.png" alt="Live hive: three project zones, bees working, stuck and waiting, and a Needs you card"></td>
+    <td colspan="2"><img src="assets/screenshot-hive.png" alt="Live hive: project zones, bees working, stuck and idle, with budget warnings and a runaway flag"></td>
   </tr>
   <tr>
     <td colspan="2" align="center"><sub><b>Live hive</b>: one zone per project, one bee per session. Working, stuck, idle, and waiting are different.</sub></td>
@@ -102,7 +102,39 @@ Demo mode invents three fictional projects and drives them with the same hook pa
 
 ## Company mode
 
-The original hive is still in the app: six departments, swarm tasks, the knowledge vault, the board, the calendar and routines. Open it with **Company** in the header (or set `"mode": "company"` in `kovan.config.json`). `npm run demo` keeps that mode working, with simulated runs when Claude Code is not logged in.
+The original hive is still in the app: six departments, swarm tasks, the knowledge vault, the board, the calendar and routines. Open it with **Company** in the header (or set `"mode": "company"` in `kovan.config.json`). `npm run demo` keeps that mode working, with simulated runs when Claude Code is not logged in. The demo also shows priced spend, a 75% project warning, a 95% department warning, and a runaway flag on one fictional session. Those figures come from a fixed token fixture and the published rate card, and they are labeled as demo.
+
+## Cost and budgets
+
+The header shows today's spend. Open **Costs** (the coin button) for the breakdown by session, project, and department.
+
+Kovan prices only token counts that Claude Code or a company-mode run actually reported: `input_tokens`, `output_tokens`, cache reads, and cache writes. A missing report stays missing. A model that is not on the rate card stays unpriced. The card ships in `shared/prices.js`, dated `2026-11-09`, from Anthropic's published list prices. Override a row under `prices` in `kovan.config.json` and set your own `dated` value when you do.
+
+Budgets are optional and per scope (session, project, department), for a UTC day, a UTC month, or the life of a session. At **75%** and **95%** the hive shows a warning. At the limit:
+
+- Company-mode jobs and routines that Kovan starts are stopped.
+- A live Claude Code permission request is denied through the hook. The hive shows a blocking alert. Kovan does not leave the request open, and it does not answer it with allow.
+
+A runaway flag appears when one session repeats the same tool call, fires too many tool calls in a minute, or spends too fast. The flag is a signal. It does not by itself allow or deny a tool.
+
+## Approve from your phone
+
+Phone access is **off** until you opt in. The default bind stays `127.0.0.1`.
+
+```bash
+export KOVAN_PHONE=1
+export KOVAN_PUBLIC_ORIGIN=https://your-tunnel.example
+# or, on a LAN you trust:
+# export KOVAN_HOST=0.0.0.0
+# export KOVAN_PUBLIC_ORIGIN=http://192.0.2.10:4700
+# export KOVAN_HOST_ALLOW=192.0.2.10
+```
+
+Restart Kovan, open **Costs**, and choose **Pair a phone**. The desktop shows a QR code. The phone opens `/phone.html`, stores its own device credential, and can be installed as a PWA. Pending permission requests and budget alerts can use Web Push. Allow and Deny on the phone use a single-use token that expires after 5 minutes and matches one request.
+
+The phone never receives the launch token. Pairing codes and approval tokens are single-use. Revoke a device from the same panel. If the push fails, the token expires, or the request is already gone, nothing is allowed. Kovan does not open a tunnel for you. Use a LAN address you choose, or a tunnel you run (Tailscale, SSH, or similar) that forwards to the loopback port.
+
+Web Push uses a VAPID key generated on this machine and stored mode `0600` in the data directory. There is no third-party account.
 
 ## Scripts
 
@@ -165,12 +197,13 @@ Company mode still runs through `server/hive.mjs` (routing, swarms, approvals, r
 Kovan is a local dashboard for a process that can approve shell commands. The defaults match that:
 
 - The server binds `127.0.0.1` only. Set `KOVAN_HOST` to listen somewhere else, and set `KOVAN_HOST_ALLOW` to the hostnames browsers will send. Binding `0.0.0.0` does not by itself trust every `Host` header.
-- Each launch writes a new token to a mode `0600` file in the data directory and requires it as `x-kovan-token` on `/api/*`. The installed hooks read that file. The page receives the token in a meta tag.
+- Each launch writes a new token to a mode `0600` file in the data directory and requires it as `x-kovan-token` on `/api/*`, except the phone routes that use a paired device credential instead. The installed hooks read the launch token. The desktop page receives it in a meta tag only when the request `Host` is loopback. The phone page never receives it.
 - `Host` must be loopback (or a name you allowed). State-changing requests must send `Content-Type: application/json`. `Origin`, when present, must be this server. There is no permissive CORS header.
 - Model, effort, department, and schedule rules are checked against allowlists. The Claude CLI receives `--model=<id>` as one argument. The prompt is written to stdin.
 - The web app escapes text that it inserts as HTML and sends a Content-Security-Policy. Script sources are same-origin files only.
 - Oversized bodies get `413`. Unexpected failures return a generic message; details stay in the server log.
-- Hooks are installed without `onFailure: "block"`. A missed hook never becomes an allow.
+- Hooks are installed without `onFailure: "block"`. A missed hook never becomes an allow. A budget limit denies the permission request. A phone timeout does not allow it.
+- Phone access is opt-in (`KOVAN_PHONE=1`). Paired devices use their own revocable credential. Each approval token is single-use, scoped to one request, and expires after 5 minutes. Host and Origin checks still apply. A tunnel origin is trusted only when it is the `KOVAN_PUBLIC_ORIGIN` you set.
 
 See [SECURITY.md](SECURITY.md) for reporting and the threat model.
 
@@ -178,7 +211,9 @@ See [SECURITY.md](SECURITY.md) for reporting and the threat model.
 
 **Why not `npx kovan`?** That npm name is not this project's. Install from a clone and run `node bin/kovan.mjs`.
 
-**Does Kovan auto-allow a permission prompt?** No. If the server is down or the wait ends, Claude Code shows its own terminal prompt.
+**Does Kovan auto-allow a permission prompt?** No. If the server is down or the wait ends, Claude Code shows its own terminal prompt. A phone that never answers does not allow the tool either.
+
+**Where do the dollar figures come from?** From reported token buckets and the dated rate card. Demo mode labels its fixture. Unknown models are shown as unpriced.
 
 **Can another website on my machine click Allow?** It would need the launch token, a loopback `Host`, and a JSON request that passes the `Origin` check. The server does not answer CORS preflights.
 

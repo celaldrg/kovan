@@ -7,13 +7,23 @@ const apiOrigin = `http://127.0.0.1:${apiPort}`;
 
 export default defineConfig({
   root: 'web',
-  build: { outDir: '../dist', emptyOutDir: true, chunkSizeWarningLimit: 900 },
+  build: {
+    outDir: '../dist',
+    emptyOutDir: true,
+    chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'web/index.html'),
+        phone: path.resolve(__dirname, 'web/phone.html'),
+      },
+    },
+  },
   plugins: [{
     name: 'kovan-token',
     transformIndexHtml: {
       order: 'pre',
       handler(html) {
-        if (html.includes('name="kovan-token"')) return html;
+        if (html.includes('name="kovan-phone"') || html.includes('name="kovan-token"')) return html;
         const file = process.env.KOVAN_TOKEN_FILE
           || path.join(process.env.KOVAN_DATA || path.resolve(__dirname, 'data'), 'token');
         let token = '';

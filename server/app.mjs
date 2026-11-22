@@ -10,12 +10,13 @@ import { readUsage } from './usage.mjs';
 import { checkDept, checkEffort, checkModel, checkRule } from './input.mjs';
 import { tokenMatches } from './token.mjs';
 import {
-  CONTENT_SECURITY_POLICY, hostAllowed, isJsonContentType, originAllowed, readBody, resolveStatic,
+  CONTENT_SECURITY_POLICY, hostAllowed, isJsonContentType, originAllowed, parseHostHeader, readBody, resolveStatic,
 } from './guard.mjs';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml',
   '.png': 'image/png', '.json': 'application/json', '.woff2': 'font/woff2', '.ico': 'image/x-icon',
+  '.webmanifest': 'application/manifest+json',
 };
 const KNOWN = new Set(['invalid model', 'invalid rule', 'invalid effort', 'invalid department', 'bad request', 'empty task']);
 
@@ -27,6 +28,17 @@ function clientError(e) {
   return null;
 }
 
+function phoneOpen(pathname, method) {
+  if (method === 'POST' && (pathname === '/api/phone/pair' || pathname === '/api/phone/approve' || pathname === '/api/phone/push')) return true;
+  if (method === 'GET' && pathname === '/api/phone/pending') return true;
+  return false;
+}
+
+function loopbackHost(header) {
+  const parsed = parseHostHeader(header);
+  return !!parsed && (parsed.host === '127.0.0.1' || parsed.host === 'localhost' || parsed.host === '::1');
+}
+
 export function createApp({
   cfg, crew, vault, ai, hive, live, token, allowedHosts,
   clients = new Set(),
@@ -34,6 +46,9 @@ export function createApp({
   limits = { json: 1_000_000, hook: 2_000_000 },
   getConnectors = () => ({ items: [], note: '' }),
   refreshConnectors = async () => getConnectors(),
+  phone = null,
+  ledger = null,
+  reach = null,
 }) {
   const baseHeaders = {
     'x-content-type-options': 'nosniff',
@@ -52,6 +67,8 @@ export function createApp({
       live: live.snapshot(),
       depts: crew.depts, workers: crew.workers, jobs: hive.jobs(), routines: hive.routines(), connectors: getConnectors(),
       notes: vault.size(), skills: readSkillShelf(cfg.vaultDir).map(s => ({ name: s.name, about: s.about, workers: s.workers, depts: s.depts })),
+      costs: ledger ? ledger.summary() : null,
+      phone: phone ? phone.status() : { enabled: false, origin: '' },
     };
   }
 
@@ -63,8 +80,10 @@ export function createApp({
   function guard(req) {
     const port = boundPort();
     const names = allowedHosts;
-    if (!hostAllowed(req.headers.host, { port, names })) return { status: 403, error: 'forbidden' };
-    if (req.method !== 'GET' && req.method !== 'HEAD' && !originAllowed(req.headers.origin, { port, names })) return { status: 403, error: 'forbidden' };
+    const extraHosts = reach ? [reach.host] : [];
+    const extraOrigins = reach ? [reach.origin] : [];
+    if (!hostAllowed(req.headers.host, { port, names, extraHosts })) return { status: 403, error: 'forbidden' };
+    if (req.method !== 'GET' && req.method !== 'HEAD' && !originAllowed(req.headers.origin, { port, names, extraOrigins })) return { status: 403, error: 'forbidden' };
     return null;
   }
 
@@ -81,7 +100,8 @@ export function createApp({
     }
     if (path.extname(file) === '.html') {
       let html = fs.readFileSync(file, 'utf8');
-      if (!html.includes('name="kovan-token"') && /^[a-f0-9]{64}$/i.test(token)) {
+      const phonePage = html.includes('name="kovan-phone"');
+      if (!phonePage && loopbackHost(req.headers.host) && !html.includes('name="kovan-token"') && /^[a-f0-9]{64}$/i.test(token)) {
         const meta = `<meta name="kovan-token" content="${token}" />`;
         html = html.includes('<head>') ? html.replace('<head>', `<head>\n  ${meta}`) : `${meta}${html}`;
       }
@@ -90,6 +110,58 @@ export function createApp({
     }
     res.writeHead(200, { ...baseHeaders, 'content-type': TYPES[path.extname(file)] || 'application/octet-stream' });
     fs.createReadStream(file).pipe(res);
+  }
+
+  function deviceHeader(req) {
+    const raw = req.headers['x-kovan-device'];
+    return typeof raw === 'string' ? raw.trim() : '';
+  }
+
+  function phoneQueue(req) {
+    if (!phone.deviceFromToken(deviceHeader(req))) return { status: 401, body: { error: 'unpaired' } };
+    const snap = live.snapshot();
+    const summary = ledger ? ledger.summary() : { alerts: [], runaway: [] };
+    const requests = snap.queue.map(card => {
+      const minted = phone.mintApproval(card.id);
+      return {
+        id: card.id, project: card.project, tool: card.tool, command: card.command, since: card.since,
+        token: minted?.token || '', expires: minted?.expires || 0,
+      };
+    });
+    return { status: 200, body: { requests, alerts: summary.alerts || [], runaway: summary.runaway || [] } };
+  }
+
+  function acceptPair(body) {
+    const result = phone.redeemPairing(body.code, body.name);
+    if (!result.ok) return { status: 401, body: { error: result.reason || 'rejected' } };
+    return { status: 200, body: { deviceId: result.deviceId, deviceToken: result.deviceToken, vapidPublicKey: result.vapidPublicKey } };
+  }
+
+  function answerFromPhone(res, req, body) {
+    const behavior = body.behavior === 'deny' ? 'deny' : body.behavior === 'allow' ? 'allow' : '';
+    if (!behavior) return send(res, 400, { error: 'bad request' });
+    const requestId = String(body.requestId || '');
+    if (!/^[\w-]{1,80}$/.test(requestId)) return send(res, 400, { error: 'bad request' });
+    const redeemed = phone.redeemApproval({ deviceToken: deviceHeader(req), requestId, token: body.token });
+    if (!redeemed.ok) {
+      const status = redeemed.reason === 'unpaired' || redeemed.reason === 'revoked' ? 401 : 403;
+      return send(res, status, { error: redeemed.reason });
+    }
+    let actual = behavior;
+    const card = live.snapshot().queue.find(item => item.id === requestId);
+    if (actual === 'allow' && card && ledger?.blockPermission?.({ id: card.sessionId, project: card.project })?.level === 'stop') actual = 'deny';
+    const ok = live.answer(requestId, actual);
+    if (!ok) return send(res, 409, { error: 'request closed' });
+    return send(res, 200, { ok: true, behavior: actual });
+  }
+
+  function pushSubscribe(res, req, body) {
+    const saved = phone.setPush(deviceHeader(req), body.subscription || body);
+    if (!saved.ok) {
+      const status = saved.reason === 'unpaired' || saved.reason === 'revoked' ? 401 : 400;
+      return send(res, status, { error: saved.reason });
+    }
+    return send(res, 200, { ok: true });
   }
 
   const server = http.createServer(async (req, res) => {
@@ -104,8 +176,12 @@ export function createApp({
       const blocked = guard(req);
       if (blocked) return send(res, blocked.status, { error: blocked.error });
       if (p.startsWith('/api/')) {
-        const presented = req.headers['x-kovan-token'];
-        if (typeof presented !== 'string' || !tokenMatches(presented, token)) return send(res, 401, { error: 'unauthorized' });
+        if (p.startsWith('/api/phone') && !phone?.enabled) return send(res, 404, { error: 'not found' });
+        const openPhone = !!(phone?.enabled && phoneOpen(p, req.method));
+        if (!openPhone) {
+          const presented = req.headers['x-kovan-token'];
+          if (typeof presented !== 'string' || !tokenMatches(presented, token)) return send(res, 401, { error: 'unauthorized' });
+        }
         const writing = req.method !== 'GET' && req.method !== 'HEAD';
         if (writing && !isJsonContentType(req.headers['content-type'])) return send(res, 415, { error: 'unsupported media type' });
         if (p === '/api/stream' && req.method === 'GET') {
@@ -122,6 +198,12 @@ export function createApp({
         if (p === '/api/vault' && req.method === 'GET') { vault.scan(); return send(res, 200, vault.graph()); }
         if (p === '/api/note' && req.method === 'GET') { const n = vault.note(url.searchParams.get('id') || ''); return n ? send(res, 200, n) : send(res, 404, { error: 'no such note' }); }
         if (p === '/api/usage' && req.method === 'GET') return send(res, 200, readUsage(hive.runs()));
+        if (p === '/api/costs' && req.method === 'GET') return send(res, 200, ledger ? ledger.summary() : {});
+        if (p === '/api/phone/pending' && req.method === 'GET') {
+          const pending = phoneQueue(req);
+          return send(res, pending.status, pending.body);
+        }
+        if (p === '/api/phone/devices' && req.method === 'GET') return send(res, 200, { devices: phone.listDevices() });
         if (p === '/api/parse' && req.method === 'GET') return send(res, 200, parseSchedule(url.searchParams.get('text') || '') || {});
         if (p === '/api/connectors' && req.method === 'GET' && url.searchParams.get('refresh')) return send(res, 200, await refreshConnectors());
         let m;
@@ -138,6 +220,27 @@ export function createApp({
             return;
           }
           if (!body || typeof body !== 'object' || Array.isArray(body)) return send(res, 400, { error: 'bad request' });
+          if (p === '/api/phone/pair') {
+            const paired = acceptPair(body);
+            return send(res, paired.status, paired.body);
+          }
+          if (p === '/api/phone/approve') return answerFromPhone(res, req, body);
+          if (p === '/api/phone/push') return pushSubscribe(res, req, body);
+          if (p === '/api/phone/pairing') {
+            const started = phone.startPairing();
+            return send(res, started ? 200 : 404, started || { error: 'not found' });
+          }
+          if (p === '/api/budgets') {
+            if (!ledger) return send(res, 404, { error: 'not found' });
+            const saved = ledger.setBudget(body);
+            if (saved.error) return send(res, 400, { error: saved.error });
+            return send(res, 200, ledger.summary());
+          }
+          const deviceRoute = p.match(/^\/api\/phone\/devices\/([\w-]+)\/revoke$/);
+          if (deviceRoute) {
+            const ok = phone.revoke(deviceRoute[1]);
+            return send(res, ok ? 200 : 404, { ok });
+          }
           if (p === '/api/hooks') {
             const ac = new AbortController();
             req.on('close', () => { if (!res.writableEnded) ac.abort(); });

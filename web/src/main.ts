@@ -22,12 +22,13 @@ import { mark, wordmark } from './brand';
 import { parseSchedule, describeRule, isOutbound, detectSwarm } from '../../shared/schedule.js';
 import { pickDepartment, guessDepartment } from '../../shared/departments.js';
 import { liveCrew, paintQueue, paintPermit, paintSessions, noteNewPermits, permitCard } from './live-view';
-import type { State, Job, ChatMsg, Pulse, Routine, Dept, LiveSnap } from './types';
+import { money, paintBanner, paintDrawer, paintMeter, type PhoneDevice } from './costs-view';
+import type { State, Job, ChatMsg, Pulse, Routine, Dept, LiveSnap, CostSummary } from './types';
 
 const app = document.getElementById('app')!;
 app.innerHTML = `
   <div class="splash" id="splash"><div class="splash-grid"></div><div class="splash-in">
-    <div class="sp-brand">${mark(44, 'sp')}<div class="splash-word">${wordmark()}</div><span class="sp-ver">v0.1.1</span></div>
+    <div class="sp-brand">${mark(44, 'sp')}<div class="splash-word">${wordmark()}</div><span class="sp-ver">v0.2.0</span></div>
     <div class="sp-kicker">Live hive for coding agents</div>
     <h1 class="sp-title">Every session,<br><em>in one living hive.</em></h1>
     <ul class="sp-steps" id="spSteps"><li style="--i:0"><i></i><span>Indexing the knowledge vault</span></li><li style="--i:1"><i></i><span>Bringing agents online</span></li><li style="--i:2"><i></i><span>Routing engine ready</span></li></ul>
@@ -47,13 +48,15 @@ app.innerHTML = `
     </nav>
     <div class="right">
       <button class="modebtn" id="modeBtn" type="button" title="Switch between the live hive and company mode">Company</button>
-      <div class="meter" id="meter" title="Token usage">${icon('Gauge', 15)}<div><b id="m5">0</b><small>5h</small></div><div><b id="m7">0</b><small>7d</small></div></div>
+      <div class="meter" id="meter" title="Spend from reported token usage"><div><b id="mSpend">$0</b><small>today</small></div><div><b id="mBudget">—</b><small>budget</small></div></div>
+      <button class="ibtn" id="costBtn" type="button" title="Costs, budgets, and phone approvals">${icon('Coins', 17)}</button>
       <button class="ibtn" data-k="t" title="Theme (T)">${icon('SunMoon', 17)}</button>
       <button class="ibtn" data-k="f" title="Focus mode (F)">${icon('Focus', 17)}</button>
     </div>
   </header>
   <aside class="activity glass">
     <div class="pane-head"><h2>${icon('Activity', 15)} <span id="paneTitle">Needs you</span></h2><span class="live"><i></i><b id="liveCount">0</b> live</span></div>
+    <div class="cost-banner" id="costBanner"></div>
     <div class="filters" id="chips"></div>
     <div id="jobs" class="jobs timeline"></div>
     <div class="links" id="links"></div>
@@ -85,6 +88,8 @@ app.innerHTML = `
   <aside class="permit glass" id="permit"></aside>
   <aside class="dfocus glass" id="dfocus"></aside>
   <div class="sheet glass" id="sheet"><button class="ibtn close" id="sheetClose" title="Close (Esc)">${icon('X', 18)}</button><div id="sheetBody"></div></div>
+  <aside class="drawer glass" id="drawer"></aside>
+  <div class="budget-alert" id="budgetAlert"><div class="glass"><h2>Budget reached</h2><p id="budgetAlertText"></p><p>Kovan denies further tool approvals for this work. Nothing is allowed on its own.</p><button type="button" id="budgetAlertOk" class="primary">I understand</button></div></div>
   <div class="toasts" id="toasts"></div>
   <div class="tip" id="tip"></div>`;
 
@@ -190,7 +195,8 @@ function applyStream(event: string, data: string) {
   else if (event === 'connectors') { st.connectors = JSON.parse(data); renderLinks(); }
   else if (event === 'pulse') { const p: Pulse = JSON.parse(data); hive.pulse(p); if (p.type === 'write' && p.note) st.notes++; }
   else if (event === 'chat') { const { worker, msg } = JSON.parse(data); if (worker === chatWith) appendMsg(msg); }
-  else if (event === 'live') { liveSnap = JSON.parse(data); st.live = liveSnap; if (mode === 'live') renderLive(); }
+  else if (event === 'live') { liveSnap = JSON.parse(data); st.live = liveSnap; if (mode === 'live') renderLive(); paintBanner($('costBanner'), st.costs, liveSnap); }
+  else if (event === 'costs') { st.costs = JSON.parse(data); paintSpend(); paintBanner($('costBanner'), st.costs, liveSnap); renderBudgetBlock(); }
 }
 
 function drainSse(buf: string) {
@@ -268,6 +274,9 @@ function renderAll() {
   if (hive?.focusedDept) renderDeptFocus(hive.focusedDept);
   if (sheet?.kind === 'calendar') sheet.refresh?.();
   if (chatWith) renderChatHeader();
+  paintSpend();
+  paintBanner($('costBanner'), st.costs, liveSnap);
+  renderBudgetBlock();
 }
 
 function toast(j: Job, kind: 'done' | 'approval') {
@@ -430,12 +439,16 @@ function renderLinks() {
   const c = st.connectors;
   $('links').innerHTML = `<span class="lh">${icon('Plug', 13)} Links</span>` + (c.items.length ? c.items.map(i => `<span class="lk ${i.usable ? 'ok' : 'off'}" title="${esc(i.name)} — ${esc(i.status)}">${esc(i.name.slice(0, 2).toUpperCase())}</span>`).join('') : `<span class="none">${esc(c.note || 'none')}</span>`);
 }
+function paintSpend() {
+  const costs = st?.costs;
+  paintMeter($('mSpend'), $('mBudget'), costs || null);
+  const title = costs?.demo
+    ? `Demo figures priced from explicit token counts. Rate card ${costs.dated}.`
+    : `Reported usage only. Rate card ${costs?.dated || '—'}.`;
+  $('meter').title = title;
+}
 async function refreshUsage() {
-  try {
-    const u = await get<{ source: string; session: number; week: number; kovan: { session: number; week: number } }>('/api/usage');
-    $('m5').textContent = fmtTokens(u.session); $('m7').textContent = fmtTokens(u.week);
-    $('meter').title = u.source === 'claude-code-logs' ? `Tokens recorded by Claude Code on this machine (Kovan: ${fmtTokens(u.kovan.session)} / ${fmtTokens(u.kovan.week)})` : 'Tokens used by Kovan runs (no Claude Code logs found)';
-  } catch {}
+  try { st.costs = await get<CostSummary>('/api/costs'); paintSpend(); paintBanner($('costBanner'), st.costs, liveSnap); renderBudgetBlock(); } catch { /* the meter keeps the last figure */ }
 }
 
 // ---------- chat ----------
@@ -541,6 +554,8 @@ function key(k: string) {
 addEventListener('keydown', e => {
   const typing = /INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName);
   if (e.key === 'Escape') {
+    if ($('budgetAlert').classList.contains('on')) { $('budgetAlert').classList.remove('on'); return; }
+    if ($('drawer').classList.contains('on')) { $('drawer').classList.remove('on'); return; }
     if (document.querySelector('.plan')) document.querySelector('.plan')!.remove();
     else if (sheet) closeSheet();
     else if (chatWith || $('chat').classList.contains('open')) closeChat();
@@ -657,8 +672,6 @@ function leaveDept() {
 }
 
 // ---------- metrics ----------
-/** Rough blended list price per 1M tokens, used only for the "est." cost hint. */
-const RATE: Record<string, number> = { haiku: 2, sonnet: 6, opus: 30 };
 const fmtDur = (ms: number) => ms < 1000 ? `${Math.round(ms)}ms` : ms < 60e3 ? `${(ms / 1000).toFixed(1)}s` : `${Math.floor(ms / 60e3)}m ${String(Math.round((ms % 60e3) / 1000)).padStart(2, '0')}s`;
 const latencyOf = (j: Job) => j.started && j.finished && j.finished >= j.started ? j.finished - j.started : null;
 function jobStats(list: Job[]) {
@@ -675,9 +688,9 @@ function renderMetrics(todayStart: number) {
   $('mP95').textContent = s.p95 === null ? 'no runs yet' : `p95 ${fmtDur(s.p95)} · last ${s.n}`;
   const todayJobs = st.jobs.filter(j => (j.started || j.created) >= todayStart);
   const tok = todayJobs.reduce((a, j) => a + (j.tokens || 0), 0);
-  const cost = todayJobs.reduce((a, j) => a + (j.tokens || 0) / 1e6 * (RATE[j.modelUsed || st.model] ?? RATE.sonnet), 0);
   $('mTok').textContent = fmtTokens(tok);
-  $('mCost').textContent = `≈ $${cost.toFixed(2)} est.`;
+  $('mCost').textContent = st.costs ? `${money(st.costs.dayUsd)} today` : '—';
+  $('mCost').title = st.costs?.demo ? 'Demo figures from the priced fixture' : 'Priced from reported token usage';
   const ended = st.jobs.filter(j => j.state === 'done' || j.state === 'failed').slice(-100);
   const failed = ended.filter(j => j.state === 'failed').length;
   $('mOk').textContent = ended.length ? `${((1 - failed / ended.length) * 100).toFixed(1)}%` : '—';
@@ -762,8 +775,9 @@ function showLiveTip(id: string | null, x: number, y: number) {
   const key = id + bee.state + bee.activity;
   if (tip.dataset.id === key) return;
   tip.dataset.id = key;
-  const line = bee.state === 'needs-you' ? 'needs you' : bee.state;
-  tip.innerHTML = `<div class="tip-h">${hexAvatar(bee.name, color, 22)}<div><b>${esc(bee.name)}</b><span>${esc(bee.project)} · ${esc(line)}</span></div></div><em class="${bee.state === 'needs-you' ? 'approval' : bee.state}">${esc((bee.activity || bee.role).slice(0, 80))}</em>`;
+  const line = bee.runaway ? 'runaway' : bee.state === 'needs-you' ? 'needs you' : bee.state;
+  const spend = bee.cost && bee.cost.usd ? ` · ${money(bee.cost.usd)}` : '';
+  tip.innerHTML = `<div class="tip-h">${hexAvatar(bee.name, color, 22)}<div><b>${esc(bee.name)}</b><span>${esc(bee.project)} · ${esc(line)}${spend}</span></div></div><em class="${bee.state === 'needs-you' ? 'approval' : bee.state}">${esc((bee.runaway?.detail || bee.activity || bee.role).slice(0, 80))}</em>`;
 }
 async function answerPermit(id: string, behavior: 'allow' | 'deny' | 'always') {
   try { await post('/api/live/answer', { id, behavior }); } catch { /* the hook may already have timed out */ }
@@ -776,6 +790,15 @@ function renderLive() {
   const states: Record<string, 'working' | 'approval' | 'stuck'> = {};
   for (const bee of liveSnap.sessions) if (bee.state !== 'idle') states[bee.id] = bee.state === 'needs-you' ? 'approval' : bee.state;
   hive?.setStates(states);
+  const flags: Record<string, 'runaway' | 'budget'> = {};
+  for (const bee of liveSnap.sessions) {
+    if (bee.budgetBlock) flags[bee.id] = 'budget';
+    else if (bee.runaway) flags[bee.id] = 'runaway';
+  }
+  hive?.setFlags(flags);
+  paintSpend();
+  paintBanner($('costBanner'), st.costs, liveSnap);
+  renderBudgetBlock();
   for (const zone of liveSnap.zones) {
     const bees = liveSnap.sessions.filter(s => s.zone === zone.id);
     hive?.setDeptLoad(zone.id, {
@@ -817,7 +840,8 @@ function renderLive() {
   $('mBusy').textContent = liveSnap.hooked ? 'hooks' : liveSnap.source === 'logs' ? 'from session logs' : st.backend === 'demo' ? 'simulated' : 'quiet';
   $('mToday').textContent = 'sorted by wait';
   $('mP95').textContent = counts.stuck ? 'rate limit or error' : 'none';
-  $('mCost').textContent = st.backend === 'demo' ? 'demo sessions' : (liveSnap.hooked ? 'exact, from hooks' : 'inferred from logs');
+  const worst = (st.costs?.alerts || []).slice().sort((a, b) => (b.ratio || 0) - (a.ratio || 0))[0];
+  $('mCost').textContent = worst ? `${worst.key} ${Math.round((worst.ratio || 0) * 100)}%` : (st.costs?.demo ? 'demo prices' : 'reported usage');
   $('mGate').textContent = counts.needs ? `${counts.needs} waiting` : 'clear';
   const busyBees = counts.working + counts.needs;
   ($('busyBar').firstElementChild as HTMLElement).style.width = `${(busyBees / Math.max(1, liveSnap.sessions.length)) * 100}%`;
@@ -865,5 +889,57 @@ function flyToProject(id: string) {
   document.getElementById('leaveLive')?.addEventListener('click', leaveDept);
 }
 $('modeBtn').onclick = () => setMode(mode === 'live' ? 'company' : 'live');
+
+let devices: PhoneDevice[] = [];
+let pairing: { url: string; svg: string; expires: number } | null = null;
+function renderBudgetBlock() {
+  const stop = (st?.costs?.alerts || []).find(alert => alert.level === 'stop');
+  const el = $('budgetAlert');
+  if (!stop) { el.classList.remove('on'); return; }
+  const key = `${stop.scope}:${stop.key}`;
+  if (sessionStorage.getItem('kovan-budget-seen') === key) return;
+  $('budgetAlertText').textContent = `${stop.key || stop.scope} is at ${Math.round((stop.ratio || 1) * 100)}% of its ${stop.period} budget.`;
+  el.classList.add('on');
+}
+$('budgetAlertOk').onclick = () => {
+  const stop = (st?.costs?.alerts || []).find(alert => alert.level === 'stop');
+  if (stop) sessionStorage.setItem('kovan-budget-seen', `${stop.scope}:${stop.key}`);
+  $('budgetAlert').classList.remove('on');
+};
+function openDrawer() {
+  const safe = pairing && pairing.svg.includes('<script') ? null : pairing;
+  paintDrawer($('drawer'), st.costs as CostSummary | null, st.phone, devices, safe);
+  $('drawer').classList.add('on');
+  document.getElementById('drawerClose')!.onclick = () => $('drawer').classList.remove('on');
+  document.getElementById('budgetForm')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const data = new FormData(event.target as HTMLFormElement);
+    const raw = String(data.get('limitUsd') || '').trim();
+    try {
+      st.costs = await post<CostSummary>('/api/budgets', {
+        scope: data.get('scope'), key: String(data.get('key') || ''), period: data.get('period'),
+        limitUsd: raw ? Number(raw) : null,
+      });
+      paintSpend();
+      openDrawer();
+    } catch (err) { alert(String(err)); }
+  });
+  document.getElementById('pairBtn')?.addEventListener('click', async () => {
+    try {
+      pairing = await post<{ url: string; svg: string; expires: number }>('/api/phone/pairing');
+      openDrawer();
+    } catch (err) { alert(String(err)); }
+  });
+  $('drawer').querySelectorAll<HTMLButtonElement>('[data-revoke]').forEach(btn => btn.onclick = async () => {
+    await post(`/api/phone/devices/${btn.dataset.revoke}/revoke`);
+    devices = devices.map(device => device.id === btn.dataset.revoke ? { ...device, revokedAt: Date.now() } : device);
+    openDrawer();
+  });
+}
+$('costBtn').onclick = async () => {
+  if ($('drawer').classList.contains('on')) { $('drawer').classList.remove('on'); return; }
+  try { devices = (await get<{ devices: PhoneDevice[] }>('/api/phone/devices')).devices; } catch { devices = []; }
+  openDrawer();
+};
 
 boot().catch(err => { $('splash')?.remove(); app.insertAdjacentHTML('beforeend', `<div class="fatal">${mark(48, 'ft')}<p>Could not reach the Kovan server.</p><code>npm start</code><small>${esc(String(err))}</small></div>`); });
