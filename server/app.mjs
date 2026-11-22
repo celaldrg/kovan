@@ -132,7 +132,9 @@ export function createApp({
           catch (e) {
             const mapped = clientError(e) || { status: 400, error: 'bad request' };
             send(res, mapped.status, { error: mapped.error });
-            req.destroy();
+            // Drain the rest of the body. Destroying the socket here makes Node 20
+            // drop the response, so the client sees a reset instead of 413.
+            req.resume();
             return;
           }
           if (!body || typeof body !== 'object' || Array.isArray(body)) return send(res, 400, { error: 'bad request' });
