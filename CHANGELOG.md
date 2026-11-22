@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here. The format is based on Keep a Changelog, and this project uses semantic versioning.
 
+## [0.2.0] - 2026-11-22
+
+### Added
+
+- Live cost for a session, a project, and a department, from token usage Claude Code reports in hooks or session JSONL and from company-mode runs. The rate card is dated and can be overridden. Missing usage is not filled in.
+- Budgets per scope. Warnings at 75% and 95%. At the limit, company-mode work stops, and a live permission request is denied instead of left open or allowed.
+- A runaway flag for a repeated tool call, a tool-call spike, or a short cost spike.
+- An installable phone page: pairing QR, a revocable device credential, single-use approval tokens that expire after 5 minutes, and Web Push with a VAPID key generated on the machine. Phone access is off until `KOVAN_PHONE=1`. The launch token stays on loopback.
+
+### Security
+
+- Phone routes still require the Host and Origin checks. The phone does not receive the launch token. A failed push or an expired token is not an allow.
+
 ## [0.1.1] - 2026-11-22
 
 ### Security

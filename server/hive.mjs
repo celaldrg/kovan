@@ -9,7 +9,7 @@ import { pickDepartment, guessDepartment } from '../shared/departments.js';
 
 const words = s => String(s).toLowerCase().match(/[a-zçğıöşü]{3,}/g) || [];
 
-export function createHive({ cfg, crew, vault, ai, emit }) {
+export function createHive({ cfg, crew, vault, ai, emit, costs = null }) {
   const jobsDb = jsonStore(path.join(cfg.dataDir, 'jobs.json'), { jobs: [] });
   const routinesDb = jsonStore(path.join(cfg.dataDir, 'routines.json'), { routines: [] });
   const chatDb = jsonStore(path.join(cfg.dataDir, 'chats.json'), { chats: {} });
@@ -61,6 +61,13 @@ export function createHive({ cfg, crew, vault, ai, emit }) {
   const publicJobs = () => jobs().slice(-300);
   const pulse = (type, data) => emit('pulse', { type, ...data });
   const recordRun = tokens => { const r = runsDb.get().runs; r.push({ at: Date.now(), tokens: tokens || 0 }); while (r.length > 5000) r.shift(); runsDb.save(); };
+  const noteUse = (dept, model, result) => {
+    recordRun(result?.tokens || 0);
+    if (result?.usage && !result.demo) {
+      costs?.ingest?.({ source: 'company', dept: dept || '', model: model || '', usage: result.usage, at: Date.now() });
+    }
+  };
+  const budgetStop = dept => costs?.blockDepartment?.(dept) || null;
   const resolveModel = (job, worker) => {
     const choices = modelChoices(cfg).map(String).filter(id => acceptModel(id, modelChoices(cfg)));
     for (const candidate of [job?.model, worker?.model, cfg.model]) {
@@ -113,8 +120,9 @@ export function createHive({ cfg, crew, vault, ai, emit }) {
       const pool = crew.workers.filter(w => !dept || w.dept === dept);
       const prompt = `Pick the single best worker for this task. Reply with only the worker id.\n\nTask: ${text}\n\nWorkers by department:\n${crew.depts.filter(d => !dept || d.id === dept).map(d => `# ${d.name} — ${d.mission}\n${pool.filter(w => w.dept === d.id).map(w => `${w.id} — ${w.role}: ${w.does} [${(w.skills || []).join(', ')}]`).join('\n')}`).join('\n')}`;
       try {
-        const { text: out, tokens } = await ai.run(prompt, { model: cfg.model, kind: 'route' });
-        recordRun(tokens);
+        const routed = await ai.run(prompt, { model: cfg.model, kind: 'route' });
+        noteUse(dept, cfg.model, routed);
+        const out = routed.text || '';
         const id = (out.toLowerCase().match(/[a-z0-9_-]+/g) || []).find(x => pool.some(w => w.id === x));
         if (id) return W(id);
       } catch {}
@@ -160,8 +168,12 @@ export function createHive({ cfg, crew, vault, ai, emit }) {
   }
 
   async function runJob(job) {
+    const early = budgetStop(job.dept);
+    if (early) { fail(job, new Error(early.message)); return; }
     const worker = job.worker ? W(job.worker) : await route(job.text, job.dept || null);
     job.worker = worker.id; job.dept = worker.dept;
+    const late = budgetStop(job.dept);
+    if (late) { fail(job, new Error(late.message)); return; }
     log(job, `${job.routed === 'you' ? 'Sent' : 'Routed'} to ${D(worker.dept)?.name} → ${worker.name}`);
     const release = await claimDesk(worker.id);
     try {
@@ -176,11 +188,14 @@ export function createHive({ cfg, crew, vault, ai, emit }) {
   }
 
   async function doWork(worker, task, job, extra = '') {
+    const stop = budgetStop(worker.dept);
+    if (stop) throw new Error(stop.message);
     const c = workerContext(worker, task);
     const prompt = `${c.prompt}\n\n${extra}\n\nTask from the owner:\n${task}\n\nReturn the finished deliverable in Markdown. End with one line "Tools used: …" (or "Tools used: none").`;
     pulse('work', { worker: worker.id, job: job.id });
-    const r = await ai.run(prompt, { model: resolveModel(job, worker), effort: resolveEffort(job, worker), kind: 'work', ctx: { worker, task, notes: c.notes, lessons: c.lessons } });
-    recordRun(r.tokens);
+    const model = resolveModel(job, worker);
+    const r = await ai.run(prompt, { model, effort: resolveEffort(job, worker), kind: 'work', ctx: { worker, task, notes: c.notes, lessons: c.lessons } });
+    noteUse(worker.dept, model, r);
     job.tokens = (job.tokens || 0) + (r.tokens || 0);
     return { ...r, sources: c.notes.map(n => n.id), skills: c.skills };
   }
@@ -204,7 +219,7 @@ export function createHive({ cfg, crew, vault, ai, emit }) {
       const prompt = `You head the ${D(lead.dept)?.name} department. Break this job into 2-${max} parts that teammates can work on simultaneously without waiting on each other. Reply ONLY with JSON: [{"worker":"id","piece":"..."}].\nTask: ${job.text}\nTeam:\n${team.map(w => `${w.id} — ${w.role}: ${w.does}`).join('\n')}`;
       try {
         const r = await ai.run(prompt, { model: resolveModel(job, lead), kind: 'split' });
-        recordRun(r.tokens);
+        noteUse(lead.dept, resolveModel(job, lead), r);
         pieces = JSON.parse(r.text.match(/\[[\s\S]*\]/)[0]).filter(p => team.some(w => w.id === p.worker)).slice(0, max);
       } catch {}
     }
@@ -225,7 +240,7 @@ export function createHive({ cfg, crew, vault, ai, emit }) {
     }));
     const mergePrompt = `${workerContext(lead, job.text).prompt}\n\nYour teammates finished their pieces of: "${job.text}".\n\n${results.map(({ w, r }) => `## ${w.name} (${w.role})\n${r.text}`).join('\n\n')}\n\nWrite the single finished deliverable from these pieces. Finish with a short credits line naming each teammate and their part.`;
     const merged = await ai.run(mergePrompt, { model: resolveModel(job, lead), kind: 'merge', ctx: { worker: lead, task: job.text, notes: vault.relevant(job.text) } });
-    recordRun(merged.tokens);
+    noteUse(lead.dept, resolveModel(job, lead), merged);
     job.tokens = (job.tokens || 0) + (merged.tokens || 0);
     const body = `${merged.text}\n\n${results.map(({ w, r }) => `### Piece — ${w.name}\n${r.text}`).join('\n\n')}`;
     finish(job, lead, { text: body, sources: [...new Set(results.flatMap(x => x.r.sources))], skills: [] });
@@ -238,8 +253,10 @@ export function createHive({ cfg, crew, vault, ai, emit }) {
     job.state = 'working'; changed();
     const prompt = `${workerContext(worker, job.text).prompt}\n\nThe owner APPROVED your prepared work below. Now perform the outbound step exactly as prepared, using your tools, and report what you did.\n\n${job.result}`;
     try {
+      const stop = budgetStop(worker.dept);
+      if (stop) throw new Error(stop.message);
       const r = await ai.run(prompt, { model: resolveModel(job, worker), kind: 'work', ctx: { worker, task: `Executed: ${job.text}` } });
-      recordRun(r.tokens);
+      noteUse(worker.dept, resolveModel(job, worker), r);
       job.tokens = (job.tokens || 0) + (r.tokens || 0);
       job.executed = r.text; job.state = 'done'; job.finished = Date.now();
       pushChat(worker.id, { from: 'worker', text: r.text, job: job.id });
@@ -304,7 +321,7 @@ export function createHive({ cfg, crew, vault, ai, emit }) {
     pulse('chat', { worker: wid });
     try {
       const r = await ai.run(`${c.prompt}\n\nYou are chatting with the owner. Answer in role, concisely, grounded in the notes. Conversation so far:\n${history}\n\n${worker.name}:`, { model: resolveModel({}, worker), kind: 'chat', ctx: { worker, task: message, notes: c.notes } });
-      recordRun(r.tokens);
+      noteUse(worker.dept, resolveModel({}, worker), r);
       pushChat(wid, { from: 'worker', text: r.text });
     } catch (e) { pushChat(wid, { from: 'system', text: `Error: ${e.message}` }); }
   }
@@ -352,8 +369,10 @@ export function createHive({ cfg, crew, vault, ai, emit }) {
       runJob(j).catch(e => fail(j, e));
     }
   }
-  setInterval(tick, 15e3);
-  setTimeout(tick, 1000);
+  const clock = setInterval(tick, 15e3);
+  clock.unref?.();
+  const soon = setTimeout(tick, 1000);
+  soon.unref?.();
   for (const j of jobs()) if (j.state === 'queued') runJob(j).catch(e => fail(j, e));
 
   const api = {

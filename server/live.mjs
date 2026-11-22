@@ -24,7 +24,7 @@ function zoneKey(cwd) {
   return `${name}-${(h >>> 0).toString(16).slice(0, 4)}`;
 }
 
-export function createLive({ emit = () => {}, now = () => Date.now(), permissionWaitMs = 110000 } = {}) {
+export function createLive({ emit = () => {}, now = () => Date.now(), permissionWaitMs = 110000, gate = null } = {}) {
   const sessions = new Map();
   const subs = new Map();
   const pending = new Map();
@@ -111,6 +111,7 @@ export function createLive({ emit = () => {}, now = () => Date.now(), permission
     if (ev.name === 'PreToolUse' || ev.name === 'PostToolUse') {
       const d = describeToolCall(ev.toolName, ev.toolInput);
       const line = `${d.tool}${d.command ? ' ' + d.command : ''}`.trim();
+      gate?.noteTool?.({ sessionId: ev.sessionId, project: session.project, signature: line, at: now() });
       if (ev.agentId && subs.has(ev.agentId)) {
         const sub = subs.get(ev.agentId);
         sub.state = 'working';
@@ -169,12 +170,28 @@ export function createLive({ emit = () => {}, now = () => Date.now(), permission
   function handleHook(raw, { signal } = {}) {
     const ev = parseHook(raw);
     if (!ev) return Promise.resolve({});
+    if (raw && raw.usage && gate?.noteUsage) {
+      const messageId = typeof raw.message_id === 'string' ? raw.message_id : (typeof raw.uuid === 'string' ? raw.uuid : '');
+      gate.noteUsage({
+        source: 'hook', sessionId: ev.sessionId, cwd: ev.cwd, model: ev.model || (typeof raw.model === 'string' ? raw.model : ''),
+        usage: raw.usage, messageId, at: now(),
+      });
+    }
     if (ev.name !== 'PermissionRequest') {
       apply(ev);
       changed();
       return Promise.resolve({});
     }
     hooked = true;
+    const session = ensureSession(ev.sessionId, ev.cwd);
+    const block = gate?.blockPermission?.(session);
+    if (block?.level === 'stop') {
+      session.attention = block.message;
+      const body = permissionDecision('deny', ev);
+      if (body.hookSpecificOutput?.decision) body.hookSpecificOutput.decision.message = block.message;
+      changed();
+      return Promise.resolve(body);
+    }
     const card = openPermission(ev);
     let finish = () => {};
     const result = new Promise(resolve => {
@@ -207,12 +224,20 @@ export function createLive({ emit = () => {}, now = () => Date.now(), permission
     const item = pending.get(id);
     if (!item) return false;
     if (behavior !== 'allow' && behavior !== 'deny' && behavior !== 'always') return false;
+    const sessionForGate = sessions.get(item.sessionId);
+    if ((behavior === 'allow' || behavior === 'always') && gate?.blockPermission?.(sessionForGate)?.level === 'stop') {
+      behavior = 'deny';
+    }
     const body = permissionDecision(behavior, {
       ...item.raw,
       permissionSuggestions: item.suggestions,
       toolName: item.toolName,
       toolInput: item.toolInput,
     });
+    if (behavior === 'deny' && gate?.blockPermission?.(sessionForGate)?.level === 'stop') {
+      const block = gate.blockPermission(sessionForGate);
+      if (body.hookSpecificOutput?.decision) body.hookSpecificOutput.decision.message = block.message;
+    }
     const session = sessions.get(item.sessionId);
     if (session) {
       session.activity = clip(behavior === 'deny' ? `denied ${item.tool}` : `allowed ${item.tool}`);
@@ -243,6 +268,7 @@ export function createLive({ emit = () => {}, now = () => Date.now(), permission
   function beeView(session, kind, extra = {}) {
     const cards = permsFor(extra.id || session.id);
     const card = cards[0];
+    const mark = gate?.decorate?.(session) || {};
     return {
       id: extra.id || session.id,
       sessionId: session.id,
@@ -258,6 +284,10 @@ export function createLive({ emit = () => {}, now = () => Date.now(), permission
       source: session.source,
       attention: session.attention || '',
       permission: card ? { id: card.id, tool: card.tool, command: card.command, diff: card.diff, file: card.file, since: card.since } : null,
+      cost: mark.cost || null,
+      budget: mark.budget || null,
+      runaway: mark.runaway || null,
+      budgetBlock: !!mark.budgetBlock,
     };
   }
 

@@ -12,5 +12,11 @@
     "haiku": "claude-haiku-4-5"
   },
   "connectors": { "allow": [], "deny": [] },
-  "swarm": { "enabled": true, "max": 3 }
+  "swarm": { "enabled": true, "max": 3 },
+  "phone": { "enabled": false, "origin": "" },
+  "budgets": {
+    "session": { "period": "day", "limitUsd": null },
+    "project": { "period": "day", "limitUsd": null },
+    "department": { "period": "month", "limitUsd": null }
+  }
 }

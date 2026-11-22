@@ -16,6 +16,15 @@ export interface State {
   live?: LiveSnap;
   depts: Dept[]; workers: Worker[]; jobs: Job[]; routines: Routine[]; connectors: { items: Connector[]; note: string }; notes: number;
   skills: { name: string; about: string; workers: string[]; depts: string[] }[];
+  costs?: CostSummary | null;
+  phone?: { enabled: boolean; origin: string };
+}
+export interface CostRow { key: string; usd: number; tokens: number; level: string; ratio: number | null; limitUsd: number | null; period: string }
+export interface CostSummary {
+  demo?: boolean; dated?: string; source?: string; dayUsd: number; dayTokens?: number;
+  alerts: { level: string; scope: string; key: string; ratio: number | null; limitUsd: number | null; spentUsd: number; period: string }[];
+  runaway?: { sessionId: string; kind: string; detail: string }[];
+  sessions?: CostRow[]; projects?: CostRow[]; departments?: CostRow[];
 }
 export interface Pulse { type: 'read' | 'write' | 'work' | 'handoff' | 'chat'; worker?: string; note?: string; from?: string; to?: string }
 export type LiveState = 'idle' | 'working' | 'stuck' | 'needs-you';
@@ -24,6 +33,10 @@ export interface LiveBee {
   id: string; sessionId: string; kind: 'session' | 'subagent'; project: string; zone: string;
   name: string; role: string; model: string; state: LiveState; activity: string; updated: number;
   source: 'claude' | 'codex' | 'demo'; attention: string; permission: LivePermit | null;
+  cost?: { usd: number; tokens: number; unpriced: number } | null;
+  budget?: { level: string; ratio: number | null; scope: string; limitUsd: number | null; period: string } | null;
+  runaway?: { kind: string; detail: string } | null;
+  budgetBlock?: boolean;
 }
 export interface LiveQueueItem {
   id: string; beeId: string; sessionId: string; project: string; name: string;

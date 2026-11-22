@@ -1,6 +1,6 @@
 {
   "name": "kovan",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Kovan — all your Claude Code and Codex sessions in one live 3D hive. See who's working, who's stuck and who needs you, and approve without hunting through terminal tabs.",
   "type": "module",
   "author": "Celalettin Durğaç (https://celaldrg.github.io)",

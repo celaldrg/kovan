@@ -24,8 +24,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const chrome = process.env.CHROME_PATH || ['/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'].find(p => fs.existsSync(p));
 const base = `http://127.0.0.1:${port}`;
 
+function authHeaders() {
+  const token = fs.readFileSync(path.join(data, 'token'), 'utf8').trim();
+  return { 'content-type': 'application/json', 'x-kovan-token': token };
+}
 async function snap() {
-  const res = await fetch(base + '/api/live');
+  const res = await fetch(base + '/api/live', { headers: authHeaders() });
   return res.json();
 }
 async function clearQueue() {
@@ -33,7 +37,7 @@ async function clearQueue() {
   for (const card of live.queue) {
     await fetch(base + '/api/live/answer', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: authHeaders(),
       body: JSON.stringify({ id: card.id, behavior: 'allow' }),
     });
   }
@@ -42,7 +46,7 @@ let pendingHook = null;
 function raisePermission() {
   pendingHook = fetch(base + '/api/hooks', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: authHeaders(),
     body: JSON.stringify({
       session_id: 'ses_lighthouse',
       cwd: '/work/lighthouse-api',

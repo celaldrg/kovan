@@ -92,3 +92,30 @@ test('log fallback does not override a session that hooks already own', () => {
   assert.equal(codex.zone, live.snapshot().sessions.find(s => s.id === 'ses_kite').zone);
   assert.equal(live.snapshot().source, 'hooks');
 });
+
+test('a spent budget denies the permission request instead of holding or allowing it', async () => {
+  const live = createLive({
+    gate: {
+      blockPermission: () => ({ level: 'stop', message: 'Budget reached for northwind-web (100% of $4.00 today). Kovan denied further work. Nothing was allowed.' }),
+    },
+  });
+  const body = await live.handleHook(bashAsk);
+  assert.equal(body.hookSpecificOutput.decision.behavior, 'deny');
+  assert.match(body.hookSpecificOutput.decision.message, /Nothing was allowed/);
+  assert.equal(live.snapshot().queue.length, 0);
+  assert.equal(live.answer('missing', 'allow'), false);
+});
+
+test('allow is turned into a denial when the budget is reached while a card is open', async () => {
+  let stop = false;
+  const live = createLive({
+    gate: { blockPermission: () => (stop ? { level: 'stop', message: 'Budget reached for lighthouse-api. Nothing was allowed.' } : null) },
+  });
+  const pending = live.handleHook(bashAsk);
+  const id = live.snapshot().queue[0].id;
+  stop = true;
+  assert.equal(live.answer(id, 'allow'), true);
+  const body = await pending;
+  assert.equal(body.hookSpecificOutput.decision.behavior, 'deny');
+  assert.match(body.hookSpecificOutput.decision.message, /Nothing was allowed/);
+});

@@ -51,11 +51,13 @@ export function permitCard(item: LiveQueueItem, bee?: LiveBee) {
     <p class="permit-tool"><code>${esc(item.tool)}</code> ${item.file ? `<em>${esc(item.file)}</em>` : ''}</p>
     ${item.command ? `<p class="permit-cmd">${esc(item.command)}</p>` : ''}
     ${diffHtml(item.diff)}
-    <div class="permit-acts">
+    ${bee?.budgetBlock
+      ? `<p class="budget-note">Budget reached. Kovan denies this tool. Nothing is allowed automatically.</p><div class="permit-acts"><button type="button" data-go="deny">${icon('X', 13)}Deny</button></div>`
+      : `<div class="permit-acts">
       <button type="button" data-go="allow" class="ok">${icon('Check', 13, 2.2)}Allow</button>
       <button type="button" data-go="deny">${icon('X', 13)}Deny</button>
       <button type="button" data-go="always">${icon('ShieldCheck', 13)}Always allow</button>
-    </div>
+    </div>`}
   </article>`;
 }
 
@@ -116,7 +118,7 @@ export function paintQueue(root: HTMLElement, snap: LiveSnap, filter: string, on
     ? snap.queue.map(item => permitCard(item, bees.get(item.beeId))).join('')
     : snap.sessions.filter(match).map(bee => `<button class="job live-row ${bee.state}" data-bee="${esc(bee.id)}" style="--c:${esc(snap.zones.find(z => z.id === bee.zone)?.color || '#888')}">
         <span class="hexav" style="--c:${esc(snap.zones.find(z => z.id === bee.zone)?.color || '#888')}">${esc((bee.name[0] || '?').toUpperCase())}</span>
-        <span class="job-main"><span class="top"><span class="who">${esc(bee.name)}</span><i class="tag">${esc(bee.project)}</i><span class="t">${esc(bee.state)}</span></span><span class="txt">${esc(bee.activity || bee.role)}</span></span>
+        <span class="job-main"><span class="top"><span class="who">${esc(bee.name)}</span><i class="tag">${esc(bee.project)}</i>${bee.runaway ? `<i class="tag late">runaway</i>` : ''}${bee.cost && bee.cost.usd ? `<i class="tag">${esc('$' + bee.cost.usd.toFixed(2))}</i>` : ''}<span class="t">${esc(bee.state)}</span></span><span class="txt">${esc(bee.activity || bee.role)}</span></span>
       </button>`).join('');
   const empty = filter === 'needs'
     ? `<div class="empty">${icon('Hand', 28, 1.25)}<p>Nobody is waiting on you.</p><small>${snap.source === 'logs' ? 'Watching session logs. Install hooks for exact state and approvals.' : snap.sessions.length ? 'Sessions are working on their own.' : 'No sessions yet. From a clone: node bin/kovan.mjs hooks install, then start Claude Code.'}</small></div>`
@@ -162,7 +164,7 @@ export function paintSessions(root: HTMLElement, snap: LiveSnap, onOpen: (id: st
     return `<article class="acard ${bee.state === 'needs-you' ? 'approval' : bee.state}" data-bee="${esc(bee.id)}" style="--c:${color}">
       <header><span class="hexav" style="--c:${color};width:36px;height:36px">${esc((bee.name[0] || '?').toUpperCase())}</span><div class="an"><b>${esc(bee.name)}</b><span>${esc(bee.role)}</span></div><em class="ast ${bee.state === 'needs-you' ? 'approval' : bee.state}">${label}</em></header>
       <div class="arow"><i class="tag dp">${esc(bee.project)}</i><span class="chip-m">${icon('Cpu', 11)}${esc(bee.source === 'codex' ? 'Codex' : 'Claude')}</span></div>
-      <p class="anow">${esc(bee.activity || 'quiet')}</p>
+      <p class="anow">${bee.runaway ? `<b>Runaway.</b> ${esc(bee.runaway.detail)} ` : ''}${esc(bee.activity || 'quiet')}</p>
     </article>`;
   };
   const body = snap.zones.map(z => `<section class="agroup" style="--c:${z.color}"><h3><i></i>${esc(z.name)}<small>${z.source === 'codex' ? 'Codex' : 'Claude Code'}</small></h3><div class="acards">${snap.sessions.filter(s => s.zone === z.id).map(card).join('') || ''}</div></section>`).join('');
