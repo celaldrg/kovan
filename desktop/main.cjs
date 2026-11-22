@@ -1,11 +1,11 @@
 // Electron shell. It starts the existing Kovan server on 127.0.0.1 and opens it.
 // Electron is used because the server is already Node. A Tauri shell would still
 // need a Node process, plus a Rust toolchain, to run that server.
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, shell } = require('electron');
 const { spawn } = require('node:child_process');
 const http = require('node:http');
 const path = require('node:path');
-const { kovanRoot, serverEnv } = require('./launch.cjs');
+const { kovanRoot, serverEnv, isAppUrl, windowOpenDecision } = require('./launch.cjs');
 
 const port = Number(process.env.KOVAN_PORT || 4700);
 const root = kovanRoot({
@@ -46,7 +46,17 @@ app.whenReady().then(async () => {
     width: 1280,
     height: 800,
     title: 'Kovan',
-    webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
+    webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webviewTag: false },
+  });
+  const contents = window.webContents;
+  const stay = (event, url) => { if (!isAppUrl(url, port)) event.preventDefault(); };
+  contents.on('will-navigate', stay);
+  contents.on('will-redirect', stay);
+  contents.on('will-attach-webview', event => event.preventDefault());
+  contents.setWindowOpenHandler(({ url }) => {
+    const decision = windowOpenDecision(url);
+    if (decision.external) shell.openExternal(decision.external).catch(() => {});
+    return { action: 'deny' };
   });
   await window.loadURL(`http://127.0.0.1:${port}/`);
 }).catch(err => {

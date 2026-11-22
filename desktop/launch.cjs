@@ -22,4 +22,27 @@ function serverEnv(base, { port, dataDir, vault } = {}) {
   return env;
 }
 
-module.exports = { kovanRoot, serverEnv };
+/** True only for the exact loopback origin the desktop server was started on. */
+function isAppUrl(value, port) {
+  let url;
+  try { url = new URL(String(value)); } catch { return false; }
+  if (url.protocol !== 'http:') return false;
+  if (url.hostname !== '127.0.0.1') return false;
+  const expected = String(Number(port));
+  if (!/^\d+$/.test(expected) || expected === 'NaN') return false;
+  const actual = url.port || '80';
+  return actual === expected;
+}
+
+/**
+ * New windows are always denied. An https URL may be opened in the system
+ * browser. file, javascript, http, and custom schemes are not.
+ */
+function windowOpenDecision(value) {
+  let url;
+  try { url = new URL(String(value)); } catch { return { action: 'deny', external: '' }; }
+  if (url.protocol !== 'https:' || url.username || url.password) return { action: 'deny', external: '' };
+  return { action: 'deny', external: url.href };
+}
+
+module.exports = { kovanRoot, serverEnv, isAppUrl, windowOpenDecision };

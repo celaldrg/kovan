@@ -21,4 +21,10 @@ test('publish workflows are manual or release-only and do not run on a pull requ
   assert.equal(pkg.bin.kovan, './bin/kovan.mjs');
   assert.equal(pkg.publishConfig.access, 'public');
   assert.equal(pkg.version, '0.4.0');
+  for (const file of ['.github/workflows/ci.yml', '.github/workflows/release.yml', '.github/workflows/codeql.yml']) {
+    const text = fs.readFileSync(file, 'utf8');
+    const uses = [...text.matchAll(/uses:\s*(\S+)/g)].map(match => match[1]);
+    assert.ok(uses.length > 0, file);
+    for (const ref of uses) assert.match(ref, /@[0-9a-f]{40}$/, `${file} ${ref}`);
+  }
 });
