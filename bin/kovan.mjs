@@ -64,7 +64,7 @@ try {
       if (!extra.installed.length) console.log('Codex and Gemini CLI were not detected, so no extra hooks were written.');
       for (const item of extra.installed) {
         console.log(`Kovan hooks installed for ${item.cli} in ${item.file}`);
-        console.log('A hook that exits without a decision does not allow the tool.');
+        console.log('Gemini BeforeTool exits 2 with a deny unless you choose Allow. Codex PermissionRequest prints nothing and leaves its own prompt.');
       }
     } catch (err) {
       console.error(err.message || err);

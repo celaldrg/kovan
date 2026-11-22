@@ -3,7 +3,8 @@
 // sessions that have never reported a hook.
 import path from 'node:path';
 import { parseHook, describeToolCall, permissionDecision, projectName, redactPaths } from '../shared/hooks.js';
-import { adaptHook, hookDecision, cliLabel } from '../shared/agents.js';
+import { adaptHook, hookDecision, cliLabel, geminiDenyBody } from '../shared/agents.js';
+import { GEMINI_SERVER_WAIT_MS } from './hook-client.mjs';
 
 const PALETTE = ['#5b8def', '#3ee6c8', '#f5b13d', '#f472b6', '#a3e635', '#c084fc', '#fb923c', '#38bdf8'];
 
@@ -25,7 +26,7 @@ function zoneKey(cwd) {
   return `${name}-${(h >>> 0).toString(16).slice(0, 4)}`;
 }
 
-export function createLive({ emit = () => {}, now = () => Date.now(), permissionWaitMs = 110000, gate = null, onRecord = null } = {}) {
+export function createLive({ emit = () => {}, now = () => Date.now(), permissionWaitMs = GEMINI_SERVER_WAIT_MS, gate = null, onRecord = null } = {}) {
   const sessions = new Map();
   const subs = new Map();
   const pending = new Map();
@@ -98,7 +99,7 @@ export function createLive({ emit = () => {}, now = () => Date.now(), permission
 
     if (ev.name === 'SessionEnd') {
       for (const [id, sub] of subs) if (sub.parentId === ev.sessionId) subs.delete(id);
-      for (const [id, p] of pending) if (p.sessionId === ev.sessionId) { p.finish({}); }
+      for (const [id, p] of pending) if (p.sessionId === ev.sessionId) { p.finish(p.cli === 'gemini' ? geminiDenyBody() : {}); }
       sessions.delete(ev.sessionId);
       return;
     }
@@ -233,11 +234,12 @@ export function createLive({ emit = () => {}, now = () => Date.now(), permission
       return Promise.resolve(body);
     }
     const card = openPermission(ev);
+    const unanswered = () => (ev.cli === 'gemini' ? geminiDenyBody() : {});
     let finish = () => {};
     const result = new Promise(resolve => {
       let settled = false;
-      const timer = setTimeout(() => finish({}), permissionWaitMs);
-      if (signal) signal.addEventListener('abort', () => finish({}), { once: true });
+      const timer = setTimeout(() => finish(unanswered()), permissionWaitMs);
+      if (signal) signal.addEventListener('abort', () => finish(unanswered()), { once: true });
       finish = (body) => {
         if (settled) return;
         settled = true;

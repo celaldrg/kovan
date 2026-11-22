@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { GEMINI_HOOK_TIMEOUT_MS } from './hook-client.mjs';
 
 const PRIVATE = 0o600;
 
@@ -75,8 +76,9 @@ export function geminiHookPlan(port, forwarder) {
     SessionEnd: hook(8000),
     Notification: hook(8000),
     AfterTool: hook(8000),
-    // Milliseconds, matching Gemini hook config. BeforeTool is held until Allow or Deny.
-    BeforeTool: hook(120000),
+    // Milliseconds. Longer than Kovan's wait so Gemini does not kill the hook first.
+    // A Gemini-side timeout continues the tool. Kovan exits 2 with a deny before that.
+    BeforeTool: hook(GEMINI_HOOK_TIMEOUT_MS),
   };
 }
 

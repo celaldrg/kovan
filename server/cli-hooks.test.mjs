@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { mergeCodexHooks, mergeGeminiHooks, removeCliHooks, installOptionalHooks } from './cli-hooks.mjs';
+import { GEMINI_FORWARD_TIMEOUT_MS, GEMINI_HOOK_TIMEOUT_MS, GEMINI_SERVER_WAIT_MS, timeoutFor } from './hook-client.mjs';
 
 test('Codex and Gemini hook merges keep other hooks and do not auto-allow', () => {
   const forwarder = '/opt/kovan/bin/hook-forward.mjs';
@@ -18,7 +19,10 @@ test('Codex and Gemini hook merges keep other hooks and do not auto-allow', () =
   assert.equal(perm[1].hooks[0].onFailure, undefined);
   const gemini = mergeGeminiHooks({ model: 'gemini-2.5-flash' }, { port: 4700, forwarder });
   assert.equal(gemini.model, 'gemini-2.5-flash');
-  assert.equal(gemini.hooks.BeforeTool[0].hooks[0].timeout, 120000);
+  assert.equal(gemini.hooks.BeforeTool[0].hooks[0].timeout, GEMINI_HOOK_TIMEOUT_MS);
+  assert.ok(GEMINI_HOOK_TIMEOUT_MS > timeoutFor('BeforeTool', {}));
+  assert.ok(timeoutFor('BeforeTool', {}) > GEMINI_SERVER_WAIT_MS);
+  assert.equal(timeoutFor('BeforeTool', {}), GEMINI_FORWARD_TIMEOUT_MS);
   assert.match(gemini.hooks.BeforeTool[0].hooks[0].command, /--cli gemini/);
   const cleared = removeCliHooks(gemini);
   assert.equal(cleared.hooks, undefined);

@@ -32,7 +32,9 @@ Provider keys are read from `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_K
 
 OpenCode's service file can contain a password. Kovan reads it to call `127.0.0.1` only, sends it as a Basic header, and does not copy it into the replay store. A non-loopback service URL is ignored.
 
-Codex and Gemini hooks use the same forwarder as Claude Code. If Kovan is down, the token is missing, or the wait ends, the process exits 0 and prints nothing. That is not an allow. Codex is not sent `updatedPermissions` on `PermissionRequest`, because that field fails closed. Gemini `BeforeTool` is allowed only when you choose Allow. Aider has no approval hook, so those sessions stay read-only.
+Claude Code and Codex `PermissionRequest` use the forwarder the same way: if Kovan is down, the token is missing, or the wait ends, the process exits 0 and prints nothing. Claude shows its terminal prompt. Codex uses its normal approval flow. Neither of those is an allow. Codex is not sent `updatedPermissions` on `PermissionRequest`, because that field fails closed. Codex documents that a `PreToolUse` error, timeout, or malformed response can let the tool run, so that event is not the approval gate.
+
+Gemini `BeforeTool` does not work that way. Gemini CLI parses exit 0 with no decision as continue, and a hook timeout or other failure also continues the tool (`hookRunner` treats a timeout as `success: false` and does not turn it into a deny; the aggregator defaults a non-blocking result to allow). Kovan therefore writes `{"decision":"deny","reason":"..."}` and exits 2, which Gemini documents as a block, on every BeforeTool path that is not an explicit Allow: missing token, server down, HTTP error, empty body, Kovan's own wait, and a thrown forwarder. The hook timeout written into Gemini settings is longer than Kovan's wait, so Kovan sends the deny before Gemini kills the process. Allow is only the JSON `decision: "allow"` after a click. Aider has no approval hook, so those sessions stay read-only.
 
 ## Threat model
 

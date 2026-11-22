@@ -73,6 +73,8 @@ test('Aider history fixture splits the session and reads the token line', () => 
   assert.equal(rows[0].usages[0].usage.output_tokens, 80);
   assert.equal(rows[0].usages[1].usage.cache_read_input_tokens, 12);
   assert.equal(rows[0].usages[1].usage.output_tokens, 40);
+  assert.equal(rows[0].usages[2].usage.input_tokens, 2803);
+  assert.equal(rows[0].usages[2].usage.output_tokens, 172);
   const stored = redactSecrets(rows[0].events.map(ev => ev.text).join('\n'));
   assert.equal(stored.includes(secret), false);
   assert.match(stored, /\[redacted\]/);

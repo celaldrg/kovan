@@ -374,7 +374,8 @@ export function openCodeReply(behavior) {
 }
 
 const AIDER_HEADER = /^# aider chat started at (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})\s*$/;
-const AIDER_TOKENS = /^Tokens:\s+(\S+)\s+sent(?:,\s+(\S+)\s+cache write)?(?:,\s+(\S+)\s+cache hit)?,\s+(\S+)\s+received\.?$/;
+// Aider appends an optional "Cost: …" clause after "received." Do not anchor on the end of the line.
+const AIDER_TOKENS = /^Tokens:\s+(\S+)\s+sent(?:,\s+(\S+)\s+cache write)?(?:,\s+(\S+)\s+cache hit)?,\s+(\S+)\s+received\.?/;
 
 function hashKey(value) {
   let h = 2166136261;
@@ -524,6 +525,22 @@ export function adaptHook(body, cli = 'claude') {
  * Codex rejects updatedPermissions on PermissionRequest, so "always" is a single allow.
  * Gemini BeforeTool has no saved-rule field, so "always" is a single allow.
  */
+/** Gemini BeforeTool deny used when Kovan does not produce an allow. Exit 2 carries the same reason. */
+export const GEMINI_DENY_REASON = 'Kovan did not allow this tool. Nothing was allowed.';
+
+export function geminiDenyBody() {
+  return { decision: 'deny', reason: GEMINI_DENY_REASON };
+}
+
+/** True only for an explicit allow, deny, or block. `{}` is not a decision. */
+export function explicitGeminiDecision(text) {
+  let body;
+  try { body = JSON.parse(text); } catch { return null; }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  if (body.decision !== 'allow' && body.decision !== 'deny' && body.decision !== 'block') return null;
+  return body;
+}
+
 export function hookDecision(cli, behavior, hook, claudeDecision) {
   if (behavior !== 'allow' && behavior !== 'deny' && behavior !== 'always') {
     return cli === 'opencode' ? null : {};

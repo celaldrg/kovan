@@ -21,3 +21,4 @@ print("welcome")
 #### Do not print this key SECRET_PLACEHOLDER
 
 > Tokens: 900 sent, 12 cache hit, 40 received.
+> Tokens: 2,803 sent, 172 received. Cost: $0.01 message, $0.01 session.

@@ -106,13 +106,29 @@ test('a spent budget denies the permission request instead of holding or allowin
   assert.equal(live.answer('missing', 'allow'), false);
 });
 
-test('Gemini and Codex approvals time out to an empty decision', async () => {
+test('Gemini BeforeTool expires as a deny; Codex PermissionRequest expires with no decision', async () => {
   const live = createLive({ permissionWaitMs: 20 });
   const gemini = await live.handleHook({
     session_id: 'gem_atlas', cwd: '/work/atlas-notes', hook_event_name: 'BeforeTool',
     tool_name: 'run_shell_command', tool_input: { command: 'npm test' },
   }, { cli: 'gemini' });
-  assert.deepEqual(gemini, {});
+  assert.equal(gemini.decision, 'deny');
+  assert.match(gemini.reason, /Nothing was allowed/);
+  const aborted = createLive({ permissionWaitMs: 5000 });
+  const ac = new AbortController();
+  const hanging = aborted.handleHook({
+    session_id: 'gem_atlas', cwd: '/work/atlas-notes', hook_event_name: 'BeforeTool',
+    tool_name: 'run_shell_command', tool_input: { command: 'npm test' },
+  }, { cli: 'gemini', signal: ac.signal });
+  ac.abort();
+  const fromAbort = await hanging;
+  assert.equal(fromAbort.decision, 'deny');
+  const codexWait = createLive({ permissionWaitMs: 20 });
+  const codexEmpty = await codexWait.handleHook({
+    session_id: 'codex_harbor', cwd: '/work/harbor-docs', hook_event_name: 'PermissionRequest',
+    tool_name: 'Bash', tool_input: { command: 'git status' },
+  }, { cli: 'codex' });
+  assert.deepEqual(codexEmpty, {});
   const codexLive = createLive({ permissionWaitMs: 2000 });
   const pending = codexLive.handleHook({
     session_id: 'codex_harbor', cwd: '/work/harbor-docs', hook_event_name: 'PermissionRequest',

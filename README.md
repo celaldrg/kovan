@@ -33,7 +33,7 @@ You have sessions open in more than one coding CLI, and one of them has been sit
 <p align="center">
   <a href="assets/kovan-demo.mp4"><b>Watch the demo (MP4)</b></a>
   <br>
-  <sub>About 20 seconds from <code>npm run demo</code>: several CLIs at work, budget warnings, a runaway flag, the approval card, Allow, then Sessions. The projects are fictional.</sub>
+  <sub>About 8 seconds from <code>npm run demo</code>: several CLIs at work, budget warnings, a runaway flag, the approval card, Allow, then Sessions. The projects are fictional.</sub>
 </p>
 
 <table>
@@ -96,7 +96,13 @@ Fail-safe: Kovan never auto-allows. The hook is installed without `onFailure: "b
 
 If the hooks are not installed, Kovan tails Claude Code session logs under the Claude config directory and, when present, Codex rollout logs. That view is inferred from the transcript, not exact. A session that has reported a hook is never overwritten by the log. Demo mode does not read those logs.
 
-The same installer writes Codex hooks into `~/.codex/hooks.json` and Gemini CLI hooks into `~/.gemini/settings.json` when those directories already exist. If a tool is not installed, that step is skipped. Codex `PermissionRequest` and Gemini `BeforeTool` use the same forwarder. An empty reply is not an allow. Codex is not sent `updatedPermissions` on that event, because Codex fails closed on that field. Gemini Allow is one shot. Aider has no approval hook: Kovan reads `.aider.chat.history.md` from `KOVAN_AIDER_DIRS` or `AIDER_CHAT_HISTORY_FILE` and labels the bee read-only. OpenCode sessions are read from its database when `sqlite3` can open it. Approvals are posted only to the loopback URL in OpenCode's service file, and only after you choose Allow or Deny.
+The same installer writes Codex hooks into `~/.codex/hooks.json` and Gemini CLI hooks into `~/.gemini/settings.json` when those directories already exist. If a tool is not installed, that step is skipped.
+
+Codex `PermissionRequest` is the approval hook. If Kovan is down, the token is missing, or the wait ends, the forwarder exits 0 and prints nothing. Codex then uses its normal approval prompt. That is not an allow. Replies omit `updatedPermissions`, which Codex rejects on this event. Codex documents that a `PreToolUse` error or timeout can let the tool run, so Kovan does not use `PreToolUse` as the gate.
+
+Gemini `BeforeTool` is different. Gemini's own docs treat exit 0 with no decision, and a hook timeout or other failure, as continue: the tool runs. Kovan therefore answers every path that is not an explicit Allow with `{"decision":"deny"}` and exit code 2 (the documented block). The installed Gemini timeout is longer than Kovan's wait, so Kovan denies before Gemini kills the hook. Allow is one shot.
+
+Aider has no approval hook. Kovan reads `.aider.chat.history.md` from `KOVAN_AIDER_DIRS` or `AIDER_CHAT_HISTORY_FILE` and labels the bee read-only. OpenCode sessions are read from its database when `sqlite3` can open it. Approvals are posted only to the loopback URL in OpenCode's service file, and only after you choose Allow or Deny.
 
 ### Replay and search
 
@@ -205,8 +211,10 @@ Web Push uses a VAPID key generated on this machine and stored mode `0600` in th
 ```
 Claude / Codex / Gemini --command--> hook-forward --POST + token--> /api/hooks --> live session store --SSE--> 3D hive
                                                           |
-                                                          +-- a decision is held until Allow / Deny
-                                                              or until the wait ends with an empty body
+                                                          +-- Claude and Codex: held until Allow / Deny,
+                                                              or an empty body (their own prompt)
+                                                          +-- Gemini BeforeTool: held until Allow,
+                                                              otherwise an explicit deny and exit 2
 OpenCode service (loopback only) --permission list--> same queue, reply only after a click
 Gemini / OpenCode / Aider logs --> read-only bees when no hook or service is available
 live events --> data/replay/*.jsonl (0600, redacted) --> Replay search
@@ -225,7 +233,7 @@ Kovan is a local dashboard for a process that can approve shell commands. The de
 - Replay files are mode `0600`. Recording can be turned off. Retention is configurable. Obvious secrets are redacted before storage. Ollama calls stay on loopback unless you set `KOVAN_OLLAMA_ALLOW_REMOTE=1`.
 - The web app escapes text that it inserts as HTML and sends a Content-Security-Policy. Script sources are same-origin files only.
 - Oversized bodies get `413`. Unexpected failures return a generic message; details stay in the server log.
-- Hooks are installed without `onFailure: "block"`. A missed hook never becomes an allow. A budget limit denies the permission request. A phone timeout does not allow it.
+- Claude Code hooks are installed without `onFailure: "block"`. A missed Claude or Codex `PermissionRequest` is not an allow: each CLI shows its own prompt. Gemini `BeforeTool` is the opposite in Gemini's own runner, so a missed one is an explicit deny and exit 2. A budget limit denies the permission request. A phone timeout does not allow it.
 - Phone access is opt-in (`KOVAN_PHONE=1`). Paired devices use their own revocable credential. Each approval token is single-use, scoped to one request, and expires after 5 minutes. Host and Origin checks still apply. A tunnel origin is trusted only when it is the `KOVAN_PUBLIC_ORIGIN` you set.
 
 See [SECURITY.md](SECURITY.md) for reporting and the threat model.
@@ -234,7 +242,7 @@ See [SECURITY.md](SECURITY.md) for reporting and the threat model.
 
 **Why not `npx kovan`?** That npm name is not this project's. Install from a clone and run `node bin/kovan.mjs`.
 
-**Does Kovan auto-allow a permission prompt?** No. If the server is down or the wait ends, the hook prints nothing and the CLI keeps its own prompt. Aider never receives an approval from Kovan. A phone that never answers does not allow the tool either.
+**Does Kovan auto-allow a permission prompt?** No. Claude Code and Codex `PermissionRequest` print nothing and leave the CLI's own prompt. Gemini `BeforeTool` gets an explicit deny and exit 2, because a silent exit would let the tool run. Aider never receives an approval from Kovan. A phone that never answers does not allow the tool either.
 
 **Where do the dollar figures come from?** From reported token buckets and the dated rate card. Demo mode labels its fixture. Unknown models, and tools that did not report usage, show cost unknown. Ollama is $0.
 

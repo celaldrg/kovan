@@ -13,6 +13,8 @@ test('a web push payload round-trips without a third-party account', () => {
 test('push endpoints must be https and must not target loopback', async () => {
   assert.equal(pushEndpointAllowed('https://push.example/send/1'), true);
   assert.equal(pushEndpointAllowed('https://fcm.googleapis.com/fcm/send/abc'), true);
+  assert.equal(pushEndpointAllowed('https://fc.example/push'), true);
+  assert.equal(pushEndpointAllowed('https://fcd12.example/wpush'), true);
   assert.equal(pushEndpointAllowed('https://fcmregistrations.googleapis.com/fcm/send/abc'), true);
   assert.equal(pushEndpointAllowed('https://updates.push.services.mozilla.com/wpush/v2/abc'), true);
   assert.equal(pushEndpointAllowed('https://web.push.apple.com/abc'), true);
