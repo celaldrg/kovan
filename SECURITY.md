@@ -4,11 +4,12 @@
 
 | Version | Supported |
 | --- | --- |
+| 0.4.0 | Yes |
 | 0.3.0 | Yes |
 | 0.2.0 | Yes |
 | 0.1.1 and older | No |
 
-0.1.0 listens on every interface and does not authenticate the API. 0.1.1 is the loopback release without budgets or phone pairing. 0.2.0 adds budgets and phone pairing. 0.3.0 adds more CLIs, providers, and a local replay store.
+0.1.0 listens on every interface and does not authenticate the API. 0.1.1 is the loopback release without budgets or phone pairing. 0.2.0 adds budgets and phone pairing. 0.3.0 adds more CLIs, providers, and a local replay store. 0.4.0 adds local approval rules and a hash-chained audit log.
 
 ## Reporting a vulnerability
 
@@ -19,6 +20,18 @@ https://github.com/celaldrg/kovan/security/advisories/new
 Please do not open a public issue for a vulnerability, and do not include exploit details in a public commit or pull request.
 
 This project has no security email address. Use the private reporting page above.
+
+## What 0.4.0 stores
+
+Rules are `data/rules.json` (or `$KOVAN_DATA/rules.json`, or `KOVAN_RULES_FILE`), mode `0600`. The directory is mode `0700` where the platform allows it. The file is JSON, schema version 1. Kovan does not load `rules.example.json` until you copy it into place.
+
+If the file is missing, every permission asks. If the file does not parse or fails validation, every permission asks and a rule cannot allow anything until the file is valid. Patterns are globs (`*` and `?`), not regular expressions, and matching is bounded.
+
+The audit log is `data/audit.jsonl` plus `data/audit.head`, both mode `0600`. Each line includes the hash of the previous line. `kovan audit verify` fails when a line, the order, or the head file does not match. Someone who can rewrite both the log and the head can write a new chain. Retention (`audit.retentionDays`, default 90, or `KOVAN_AUDIT_DAYS`) drops older lines, writes an anchor that records how many lines were dropped and the previous head hash, and starts a new chain from that anchor.
+
+Audit lines use the same secret redaction as replay. The actor is the rule id, a desktop answer, a phone answer, a timeout, or a budget stop.
+
+The npm package name is `@celaldrg/kovan` (`publishConfig.access` is `public`). The container image name is `ghcr.io/celaldrg/kovan`. Desktop archives go to GitHub Releases. Those publishes run from `.github/workflows/release.yml`, which starts on a published GitHub release or a manual dispatch. Pull requests do not publish. npm uses an `NPM_TOKEN` secret. GHCR and release uploads use `GITHUB_TOKEN`.
 
 ## What 0.3.0 stores
 
@@ -63,7 +76,9 @@ Or set `KOVAN_HOST` to an address on a LAN you trust, set `KOVAN_PUBLIC_ORIGIN` 
 
 ## Known limits
 
-Company-mode jobs still decide "needs approval" with a keyword check. A task that is not phrased like the keywords can run with the tools the existing company-mode call already enabled. This release does not turn that into a new policy engine. Claude Code permission prompts are a separate path and are never auto-allowed.
+Company-mode jobs still decide "needs approval" with a keyword check. A task that is not phrased like the keywords can run with the tools the existing company-mode call already enabled. That path is separate from the live approval rules.
+
+A valid allow rule can approve a matching live tool without a click. A spent budget still denies that request. A broken rules file cannot allow it. Claude Code and Codex still get an empty answer on timeout. Gemini `BeforeTool` still gets an explicit deny.
 
 There is no per-minute cap on how many company jobs can be queued. Spend limits are the budgets you configure. The body-size limit is what stops an oversized request from sitting open.
 

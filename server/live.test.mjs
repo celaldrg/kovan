@@ -107,13 +107,16 @@ test('a spent budget denies the permission request instead of holding or allowin
 });
 
 test('Gemini BeforeTool expires as a deny; Codex PermissionRequest expires with no decision', async () => {
-  const live = createLive({ permissionWaitMs: 20 });
+  const events = [];
+  const live = createLive({ permissionWaitMs: 20, onAudit: (event) => events.push(event) });
   const gemini = await live.handleHook({
     session_id: 'gem_atlas', cwd: '/work/atlas-notes', hook_event_name: 'BeforeTool',
     tool_name: 'run_shell_command', tool_input: { command: 'npm test' },
   }, { cli: 'gemini' });
   assert.equal(gemini.decision, 'deny');
   assert.match(gemini.reason, /Nothing was allowed/);
+  assert.equal(events[0].actor, 'timeout');
+  assert.equal(events[0].decision, 'deny');
   const aborted = createLive({ permissionWaitMs: 5000 });
   const ac = new AbortController();
   const hanging = aborted.handleHook({
@@ -140,6 +143,71 @@ test('Gemini BeforeTool expires as a deny; Codex PermissionRequest expires with 
   const body = await pending;
   assert.equal(body.hookSpecificOutput.decision.behavior, 'allow');
   assert.equal(body.hookSpecificOutput.decision.updatedPermissions, undefined);
+});
+
+test('an allow rule answers immediately and a broken rules file does not', async () => {
+  const events = [];
+  const allow = createLive({
+    rules: { evaluate: () => ({ action: 'allow', ruleId: 'allow-tests', failed: false, status: 'ok' }) },
+    onAudit: (event) => events.push(event),
+  });
+  const allowed = await allow.handleHook(bashAsk);
+  assert.equal(allowed.hookSpecificOutput.decision.behavior, 'allow');
+  assert.equal(allow.snapshot().queue.length, 0);
+  assert.equal(events[0].actor, 'rule');
+  assert.equal(events[0].ruleId, 'allow-tests');
+  assert.equal(events[0].decision, 'allow');
+
+  const denied = createLive({
+    rules: { evaluate: () => ({ action: 'deny', ruleId: 'deny-bash', failed: false, status: 'ok', override: true }) },
+    onAudit: (event) => events.push(event),
+  });
+  const body = await denied.handleHook(bashAsk);
+  assert.equal(body.hookSpecificOutput.decision.behavior, 'deny');
+  assert.equal(events.at(-1).actor, 'rule');
+  assert.equal(events.at(-1).ruleId, 'deny-bash');
+
+  const broken = createLive({
+    permissionWaitMs: 30,
+    rules: { evaluate: () => ({ action: 'allow', ruleId: 'stale', failed: true, status: 'invalid' }) },
+    onAudit: (event) => events.push(event),
+  });
+  const asked = await broken.handleHook(bashAsk);
+  assert.deepEqual(asked, {});
+  assert.equal(events.at(-1).actor, 'timeout');
+  assert.equal(events.at(-1).decision, 'unanswered');
+  assert.equal(events.some(event => event.ruleId === 'stale' && event.decision === 'allow'), false);
+});
+
+test('a budget stop is recorded as budget even when a rule would allow', async () => {
+  const events = [];
+  const live = createLive({
+    rules: { evaluate: () => ({ action: 'allow', ruleId: 'allow-tests', failed: false, status: 'ok' }) },
+    gate: { blockPermission: () => ({ level: 'stop', message: 'Budget reached for lighthouse-api. Nothing was allowed.' }) },
+    onAudit: (event) => events.push(event),
+  });
+  const body = await live.handleHook(bashAsk);
+  assert.equal(body.hookSpecificOutput.decision.behavior, 'deny');
+  assert.equal(events[0].actor, 'budget');
+  assert.equal(events[0].decision, 'deny');
+  assert.equal(live.snapshot().queue.length, 0);
+});
+
+test('desktop and phone answers are different audit actors', async () => {
+  const events = [];
+  const live = createLive({ permissionWaitMs: 2000, onAudit: (event) => events.push(event) });
+  const pending = live.handleHook(bashAsk);
+  const id = live.snapshot().queue[0].id;
+  assert.equal(live.answer(id, 'deny', { actor: 'phone' }), true);
+  await pending;
+  assert.equal(events[0].actor, 'phone');
+  assert.equal(events[0].decision, 'deny');
+  const again = live.handleHook(bashAsk);
+  const id2 = live.snapshot().queue[0].id;
+  live.answer(id2, 'allow');
+  await again;
+  assert.equal(events[1].actor, 'desktop');
+  assert.equal(events[1].decision, 'allow');
 });
 
 test('allow is turned into a denial when the budget is reached while a card is open', async () => {

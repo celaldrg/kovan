@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "deny-recursive-delete",
+      "priority": 100,
+      "action": "deny",
+      "match": { "tool": "Bash", "command": "rm -rf *" }
+    },
+    {
+      "id": "ask-edits",
+      "priority": 0,
+      "action": "ask",
+      "match": { "tool": "Edit" }
+    }
+  ]
+}

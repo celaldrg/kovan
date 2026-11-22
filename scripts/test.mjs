@@ -13,7 +13,7 @@ function tests(dir, suffix) {
     .map(name => path.join(dir, name));
 }
 
-const files = [...tests('shared', '.test.js'), ...tests('server', '.test.mjs')].sort();
+const files = [...tests('shared', '.test.js'), ...tests('server', '.test.mjs'), ...tests('desktop', '.test.cjs')].sort();
 if (!files.length) {
   console.error('no test files found');
   process.exit(1);

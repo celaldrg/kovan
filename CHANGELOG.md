@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here. The format is based on Keep a Changelog, and this project uses semantic versioning.
 
+## [0.4.0] - 2026-11-22
+
+### Added
+
+- Local approval rules in `data/rules.json` (schema version 1, mode `0600`). A rule can allow, deny, or ask by CLI, project, tool, command glob, path glob, and cost so far. Higher priority is checked first. At the same priority, deny beats allow. If nothing matches, Kovan asks. A file that does not parse fails closed to ask and never auto-allows. The Rules page can add, reorder, and dry-run a sample event.
+- An append-only audit log of every approval decision: rule, desktop, phone, timeout, or budget stop. Each line carries the previous hash. `kovan audit verify` reports a broken chain. `kovan audit export --since <date>` prints JSONL. Retention compacts the file into a new chain and records the previous head. The Audit page filters the log. Secrets are redacted the same way as replay.
+- Install packaging for `@celaldrg/kovan`. `npx @celaldrg/kovan` starts the server. The bin name stays `kovan`. A Dockerfile runs as user `kovan`, binds loopback unless `KOVAN_HOST` is set, and documents `-p 127.0.0.1:4700:4700`. An Electron shell starts that server and opens it. CI builds the package, image, and desktop app. Publishing to npm, `ghcr.io/celaldrg/kovan`, and GitHub Releases happens only from a published GitHub release or a manual workflow run.
+
+### Security
+
+- A budget stop still denies a live permission, including when a rule says allow. Gemini `BeforeTool` still fails closed to deny. A Claude or Codex timeout is still an empty answer, not an allow. Phone mode stays opt-in.
+
 ## [0.3.0] - 2026-11-22
 
 ### Added

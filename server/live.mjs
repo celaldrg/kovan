@@ -26,7 +26,7 @@ function zoneKey(cwd) {
   return `${name}-${(h >>> 0).toString(16).slice(0, 4)}`;
 }
 
-export function createLive({ emit = () => {}, now = () => Date.now(), permissionWaitMs = null, gate = null, onRecord = null } = {}) {
+export function createLive({ emit = () => {}, now = () => Date.now(), permissionWaitMs = null, gate = null, onRecord = null, rules = null, onAudit = null } = {}) {
   const sessions = new Map();
   const subs = new Map();
   const pending = new Map();
@@ -73,6 +73,52 @@ export function createLive({ emit = () => {}, now = () => Date.now(), permission
     try { onRecord(event); } catch { /* recording must not break the hive */ }
   }
 
+  function audit(event) {
+    if (!onAudit) return;
+    try { onAudit(event); } catch { /* an audit failure must not allow or deny by itself */ }
+  }
+
+  function sampleFor(ev, session) {
+    const input = ev.toolInput && typeof ev.toolInput === 'object' ? ev.toolInput : {};
+    const described = describeToolCall(ev.toolName, input);
+    const file = typeof input.file_path === 'string' ? input.file_path : '';
+    const command = typeof input.command === 'string' ? input.command : described.command;
+    let costSoFar = null;
+    try {
+      const cost = gate?.decorate?.(session)?.cost;
+      if (cost && Number.isFinite(cost.usd)) costSoFar = cost.usd;
+    } catch { /* unknown cost does not satisfy a cost rule */ }
+    return {
+      cli: ev.cli || session?.source || 'claude',
+      project: session?.project || projectName(ev.cwd || ''),
+      sessionId: session?.id || ev.sessionId || '',
+      tool: described.tool,
+      command: String(command || '').slice(0, 2000),
+      path: String(file || '').slice(0, 2000),
+      costSoFar,
+    };
+  }
+
+  function auditFrom(sample, extra) {
+    audit({
+      cli: sample.cli, project: sample.project, sessionId: sample.sessionId, tool: sample.tool,
+      command: sample.command, path: sample.path, costSoFar: sample.costSoFar, at: now(), ...extra,
+    });
+  }
+
+  function ruleDecision(sample) {
+    if (!rules) return { action: 'ask', ruleId: null, failed: false, status: 'absent' };
+    try {
+      const result = rules.evaluate(sample);
+      if (!result || result.failed || (result.action !== 'allow' && result.action !== 'deny' && result.action !== 'ask')) {
+        return { action: 'ask', ruleId: null, failed: true, status: 'invalid' };
+      }
+      return result;
+    } catch {
+      return { action: 'ask', ruleId: null, failed: true, status: 'invalid' };
+    }
+  }
+
   function apply(ev) {
     hooked = true;
     if (ev.name === 'SubagentStart' || ev.name === 'SubagentStop') {
@@ -99,7 +145,7 @@ export function createLive({ emit = () => {}, now = () => Date.now(), permission
 
     if (ev.name === 'SessionEnd') {
       for (const [id, sub] of subs) if (sub.parentId === ev.sessionId) subs.delete(id);
-      for (const [id, p] of pending) if (p.sessionId === ev.sessionId) { p.finish(p.cli === 'gemini' ? geminiDenyBody() : {}); }
+      for (const [id, p] of pending) if (p.sessionId === ev.sessionId) { p.finish(p.cli === 'gemini' ? geminiDenyBody() : {}, 'closed'); }
       sessions.delete(ev.sessionId);
       return;
     }
@@ -231,9 +277,13 @@ export function createLive({ emit = () => {}, now = () => Date.now(), permission
       else if (typeof body.reason === 'string') body.reason = block.message;
       changed();
       record({ sessionId: session.id, cli: session.source, project: session.project, status: 'denied', kind: 'approval', text: block.message, at: now() });
+      auditFrom(sampleFor(ev, session), { actor: 'budget', decision: 'deny', behavior: 'deny', ruleId: null, rulesStatus: '', reason: 'budget' });
       return Promise.resolve(body);
     }
     const card = openPermission(ev);
+    const sample = sampleFor(ev, session);
+    const ruled = ruleDecision(sample);
+    const rulesStatus = ruled.status || (rules ? 'ok' : 'absent');
     const unanswered = () => (ev.cli === 'gemini' ? geminiDenyBody() : {});
     const holdMs = permissionWaitMs != null
       ? permissionWaitMs
@@ -241,15 +291,25 @@ export function createLive({ emit = () => {}, now = () => Date.now(), permission
     let finish = () => {};
     const result = new Promise(resolve => {
       let settled = false;
-      const timer = setTimeout(() => finish(unanswered()), holdMs);
-      if (signal) signal.addEventListener('abort', () => finish(unanswered()), { once: true });
-      finish = (body) => {
+      const timer = setTimeout(() => finish(unanswered(), 'timeout'), holdMs);
+      if (signal) signal.addEventListener('abort', () => finish(unanswered(), 'timeout'), { once: true });
+      finish = (body, source) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
         pending.delete(card.id);
         const session = sessions.get(card.sessionId);
         const answered = decided(body);
+        if (source === 'timeout') {
+          auditFrom(sample, {
+            actor: 'timeout',
+            decision: ev.cli === 'gemini' ? 'deny' : 'unanswered',
+            behavior: ev.cli === 'gemini' ? 'deny' : '',
+            ruleId: null,
+            rulesStatus,
+            reason: 'timeout',
+          });
+        }
         if (session && !permsFor(session.id).length && session.state === 'needs-you' && !answered) {
           session.state = 'working';
           session.activity = 'waiting in the terminal';
@@ -261,18 +321,22 @@ export function createLive({ emit = () => {}, now = () => Date.now(), permission
         changed();
       };
     });
-    pending.set(card.id, { ...card, finish, raw: ev, cli: ev.cli, always: ev.always !== false });
-    changed();
+    pending.set(card.id, { ...card, finish, raw: ev, cli: ev.cli, always: ev.always !== false, sample, rulesStatus });
+    if (ruled.action === 'allow' || ruled.action === 'deny') {
+      answer(card.id, ruled.action, { actor: 'rule', ruleId: ruled.ruleId, rulesStatus });
+    } else changed();
     return result;
   }
 
-  function answer(id, behavior) {
+  function answer(id, behavior, meta = {}) {
     const item = pending.get(id);
     if (!item) return false;
     if (behavior !== 'allow' && behavior !== 'deny' && behavior !== 'always') return false;
     const sessionForGate = sessions.get(item.sessionId);
+    let actor = meta.actor === 'phone' || meta.actor === 'rule' || meta.actor === 'budget' ? meta.actor : 'desktop';
     if ((behavior === 'allow' || behavior === 'always') && gate?.blockPermission?.(sessionForGate)?.level === 'stop') {
       behavior = 'deny';
+      actor = 'budget';
     }
     const cli = item.cli || 'claude';
     const body = hookDecision(cli, behavior, {
@@ -299,6 +363,18 @@ export function createLive({ emit = () => {}, now = () => Date.now(), permission
     }
     const sub = subs.get(item.beeId);
     if (sub && permsFor(sub.id).length <= 1) sub.state = 'working';
+    const sample = item.sample || {
+      cli: item.cli || 'claude', project: session?.project || '', sessionId: item.sessionId,
+      tool: item.tool, command: item.command, path: item.file || '', costSoFar: null,
+    };
+    auditFrom(sample, {
+      actor,
+      decision: behavior === 'deny' ? 'deny' : 'allow',
+      behavior,
+      ruleId: actor === 'rule' ? (meta.ruleId || null) : null,
+      rulesStatus: meta.rulesStatus || item.rulesStatus || '',
+      reason: actor,
+    });
     item.finish(body);
     return true;
   }
@@ -369,7 +445,15 @@ export function createLive({ emit = () => {}, now = () => Date.now(), permission
       changed();
       return body;
     };
-    pending.set(card.id, { ...card, finish, raw: ev, cli: ev.cli, always: true, externalId: spec.requestId, deliver: spec.deliver });
+    const sample = sampleFor(ev, session);
+    const ruled = ruleDecision(sample);
+    pending.set(card.id, {
+      ...card, finish, raw: ev, cli: ev.cli, always: true, externalId: spec.requestId, deliver: spec.deliver,
+      sample, rulesStatus: ruled.status || (rules ? 'ok' : 'absent'),
+    });
+    if ((ruled.action === 'allow' || ruled.action === 'deny') && answer(card.id, ruled.action, { actor: 'rule', ruleId: ruled.ruleId, rulesStatus: ruled.status || 'ok' })) {
+      return card.id;
+    }
     changed();
     return card.id;
   }

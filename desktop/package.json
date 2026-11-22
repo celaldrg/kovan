@@ -1,0 +1,42 @@
+{
+  "name": "kovan-desktop",
+  "private": true,
+  "version": "0.4.0",
+  "description": "Electron shell for the local Kovan server. Release builds are attached to GitHub Releases. This package is not published to npm.",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --dir --publish never"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "io.github.celaldrg.kovan",
+    "productName": "Kovan",
+    "publish": null,
+    "npmRebuild": false,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.cjs",
+      "launch.cjs"
+    ],
+    "extraResources": [
+      { "from": "../dist", "to": "kovan/dist" },
+      { "from": "../bin", "to": "kovan/bin" },
+      { "from": "../server", "to": "kovan/server", "filter": ["**/*", "!**/*.test.mjs"] },
+      { "from": "../shared", "to": "kovan/shared", "filter": ["**/*", "!**/*.test.js"] },
+      { "from": "../vault", "to": "kovan/vault" },
+      { "from": "../crew.json", "to": "kovan/crew.json" },
+      { "from": "../kovan.config.json", "to": "kovan/kovan.config.json" },
+      { "from": "../rules.example.json", "to": "kovan/rules.example.json" },
+      { "from": "../package.json", "to": "kovan/package.json" }
+    ],
+    "linux": { "target": ["dir"] },
+    "mac": { "target": ["dir"] },
+    "win": { "target": ["dir"] }
+  }
+}

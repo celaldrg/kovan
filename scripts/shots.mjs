@@ -140,6 +140,44 @@ try {
   await sleep(1200);
 
   await client.send('Page.stopScreencast');
+  await page.keyboard.press('Escape');
+  await sleep(200);
+  async function postJson(url, body) {
+    const res = await fetch(base + url, { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
+    if (!res.ok) throw new Error(`${url} ${res.status} ${await res.text()}`);
+  }
+  await postJson('/api/rules', { op: 'add', rule: { id: 'deny-rm', action: 'deny', priority: 40, match: { tool: 'Bash', command: 'rm -rf *' } } });
+  await postJson('/api/rules', { op: 'add', rule: { id: 'ask-edits', action: 'ask', priority: 10, match: { tool: 'Edit' } } });
+  await postJson('/api/hooks', {
+    session_id: 'ses_lighthouse',
+    cwd: '/work/lighthouse-api',
+    hook_event_name: 'PermissionRequest',
+    tool_name: 'Bash',
+    tool_input: { command: 'rm -rf build' },
+  });
+  await page.keyboard.press('y');
+  await page.waitForSelector('#rulesList .rule', { timeout: 8000 });
+  await page.evaluate(() => {
+    document.querySelector('#testTool').value = 'Bash';
+    const input = document.querySelector('#testCommand');
+    input.value = 'rm -rf build';
+    document.querySelector('#rulesTest').requestSubmit();
+  });
+  await page.waitForFunction(() => /deny-rm/.test(document.querySelector('#ruleTestOut')?.textContent || ''), { timeout: 8000 });
+  await page.evaluate(() => {
+    const scroller = document.querySelector('.rules-scroll');
+    const out = document.querySelector('#ruleTestOut');
+    if (!scroller || !out) return;
+    const top = out.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+    scroller.scrollTop = Math.max(0, scroller.scrollTop + top - 220);
+  });
+  await sleep(400);
+  await page.screenshot({ path: path.resolve('assets/screenshot-rules.png') });
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('l');
+  await page.waitForSelector('#auditList .rule', { timeout: 8000 });
+  await sleep(400);
+  await page.screenshot({ path: path.resolve('assets/screenshot-audit.png') });
   await sleep(300);
   const elapsed = grabbed.length ? grabbed[grabbed.length - 1].t / 1000 : 0;
   // Keep about 8 frames a second so the file stays a walkthrough, not a pile of duplicates.
