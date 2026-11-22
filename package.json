@@ -1,6 +1,6 @@
 {
   "name": "kovan",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Kovan — all your Claude Code and Codex sessions in one live 3D hive. See who's working, who's stuck and who needs you, and approve without hunting through terminal tabs.",
   "type": "module",
   "author": "Celalettin Durğaç (https://celaldrg.github.io)",
@@ -38,8 +38,20 @@
     "demo": "cross-env KOVAN_DEMO=1 node server/index.mjs",
     "smoke": "node scripts/smoke.mjs",
     "shots": "node scripts/shots.mjs",
-    "test": "node scripts/test.mjs"
+    "test": "node scripts/test.mjs",
+    "hooks:install": "node bin/kovan.mjs hooks install",
+    "hooks:uninstall": "node bin/kovan.mjs hooks uninstall",
+    "prepublishOnly": "npm run build"
   },
+  "files": [
+    "bin",
+    "server",
+    "shared",
+    "dist",
+    "vault",
+    "crew.json",
+    "kovan.config.json"
+  ],
   "devDependencies": {
     "@fontsource/inter": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",

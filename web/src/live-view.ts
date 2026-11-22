@@ -119,7 +119,7 @@ export function paintQueue(root: HTMLElement, snap: LiveSnap, filter: string, on
         <span class="job-main"><span class="top"><span class="who">${esc(bee.name)}</span><i class="tag">${esc(bee.project)}</i><span class="t">${esc(bee.state)}</span></span><span class="txt">${esc(bee.activity || bee.role)}</span></span>
       </button>`).join('');
   const empty = filter === 'needs'
-    ? `<div class="empty">${icon('Hand', 28, 1.25)}<p>Nobody is waiting on you.</p><small>${snap.source === 'logs' ? 'Watching session logs. Install hooks for exact state and approvals.' : snap.sessions.length ? 'Sessions are working on their own.' : 'No sessions yet. Run npx kovan hooks install, then start Claude Code.'}</small></div>`
+    ? `<div class="empty">${icon('Hand', 28, 1.25)}<p>Nobody is waiting on you.</p><small>${snap.source === 'logs' ? 'Watching session logs. Install hooks for exact state and approvals.' : snap.sessions.length ? 'Sessions are working on their own.' : 'No sessions yet. From a clone: node bin/kovan.mjs hooks install, then start Claude Code.'}</small></div>`
     : `<div class="empty">${icon('Hexagon', 28, 1.25)}<p>Nothing in this lane.</p></div>`;
   root.innerHTML = cards || empty;
   root.querySelectorAll<HTMLElement>('[data-go]').forEach(btn => btn.onclick = e => {
@@ -166,6 +166,6 @@ export function paintSessions(root: HTMLElement, snap: LiveSnap, onOpen: (id: st
     </article>`;
   };
   const body = snap.zones.map(z => `<section class="agroup" style="--c:${z.color}"><h3><i></i>${esc(z.name)}<small>${z.source === 'codex' ? 'Codex' : 'Claude Code'}</small></h3><div class="acards">${snap.sessions.filter(s => s.zone === z.id).map(card).join('') || ''}</div></section>`).join('');
-  root.innerHTML = `${head}<div class="agrid">${body || `<div class="empty">${icon('Hexagon', 28)}<p>No live sessions.</p><small>npx kovan hooks install</small></div>`}</div>`;
+  root.innerHTML = `${head}<div class="agrid">${body || `<div class="empty">${icon('Hexagon', 28)}<p>No live sessions.</p><small>node bin/kovan.mjs hooks install</small></div>`}</div>`;
   root.querySelectorAll<HTMLElement>('[data-bee]').forEach(el => el.onclick = () => { if (el.dataset.bee) onOpen(el.dataset.bee); });
 }

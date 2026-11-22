@@ -12,7 +12,7 @@ import '@fontsource/jetbrains-mono/latin-400.css';
 import '@fontsource/jetbrains-mono/latin-500.css';
 import './style.css';
 import { Hive } from './scene';
-import { get, post } from './api';
+import { authHeaders, get, post } from './api';
 import { md, esc } from './md';
 import { openGraph } from './graph';
 import { openCalendar } from './calendar';
@@ -27,7 +27,7 @@ import type { State, Job, ChatMsg, Pulse, Routine, Dept, LiveSnap } from './type
 const app = document.getElementById('app')!;
 app.innerHTML = `
   <div class="splash" id="splash"><div class="splash-grid"></div><div class="splash-in">
-    <div class="sp-brand">${mark(44, 'sp')}<div class="splash-word">${wordmark()}</div><span class="sp-ver">v0.1</span></div>
+    <div class="sp-brand">${mark(44, 'sp')}<div class="splash-word">${wordmark()}</div><span class="sp-ver">v0.1.1</span></div>
     <div class="sp-kicker">Live hive for coding agents</div>
     <h1 class="sp-title">Every session,<br><em>in one living hive.</em></h1>
     <ul class="sp-steps" id="spSteps"><li style="--i:0"><i></i><span>Indexing the knowledge vault</span></li><li style="--i:1"><i></i><span>Bringing agents online</span></li><li style="--i:2"><i></i><span>Routing engine ready</span></li></ul>
@@ -142,8 +142,8 @@ async function boot() {
   b.className = `status ${st.backend === 'demo' ? 'demo' : 'live'}`;
   b.title = st.backend === 'demo' ? 'Simulated work. Install & log in to Claude Code, or set ANTHROPIC_API_KEY, then restart.' : 'Real runs on your own login.';
   renderDeptMenu();
-  $('model').innerHTML = st.models.map(m => `<option ${m === st.model ? 'selected' : ''}>${m}</option>`).join('');
-  $('effort').innerHTML = st.efforts.map(e => `<option value="${e}">${e || 'auto'}</option>`).join('');
+  $('model').innerHTML = st.models.map(m => `<option ${m === st.model ? 'selected' : ''}>${esc(m)}</option>`).join('');
+  $('effort').innerHTML = st.efforts.map(e => `<option value="${esc(e)}">${esc(e) || 'auto'}</option>`).join('');
   const steps = $('spSteps')?.querySelectorAll('li span');
   if (steps?.length === 3 && mode === 'live') {
     steps[0].textContent = liveSnap.sessions.length ? `Found ${liveSnap.sessions.length} sessions` : 'Waiting for Claude Code sessions';
@@ -184,14 +184,50 @@ function showTip(id: string | null, x: number, y: number) {
   tip.innerHTML = `<div class="tip-h">${hexAvatar(w.name, c.color, 22)}<div><b>${esc(w.name)}</b><span>${esc(w.role)}${w.lead ? ' · department head' : ''} · ${esc(w.model || st.model)}</span></div></div>${job ? `<em class="${job.state}">${job.state === 'approval' ? icon('Hand', 12) + ' waiting for your OK' : icon('Sparkles', 12) + ' ' + esc(job.text.slice(0, 64))}</em>` : '<em class="idle">idle · click to open</em>'}`;
 }
 
-function connectStream() {
-  const es = new EventSource('/api/stream');
-  es.addEventListener('jobs', e => { st.jobs = JSON.parse((e as MessageEvent).data); renderAll(); });
-  es.addEventListener('routines', e => { st.routines = JSON.parse((e as MessageEvent).data); renderAll(); });
-  es.addEventListener('connectors', e => { st.connectors = JSON.parse((e as MessageEvent).data); renderLinks(); });
-  es.addEventListener('pulse', e => { const p: Pulse = JSON.parse((e as MessageEvent).data); hive.pulse(p); if (p.type === 'write' && p.note) st.notes++; });
-  es.addEventListener('chat', e => { const { worker, msg } = JSON.parse((e as MessageEvent).data); if (worker === chatWith) appendMsg(msg); });
-  es.addEventListener('live', e => { liveSnap = JSON.parse((e as MessageEvent).data); st.live = liveSnap; if (mode === 'live') renderLive(); });
+function applyStream(event: string, data: string) {
+  if (event === 'jobs') { st.jobs = JSON.parse(data); renderAll(); }
+  else if (event === 'routines') { st.routines = JSON.parse(data); renderAll(); }
+  else if (event === 'connectors') { st.connectors = JSON.parse(data); renderLinks(); }
+  else if (event === 'pulse') { const p: Pulse = JSON.parse(data); hive.pulse(p); if (p.type === 'write' && p.note) st.notes++; }
+  else if (event === 'chat') { const { worker, msg } = JSON.parse(data); if (worker === chatWith) appendMsg(msg); }
+  else if (event === 'live') { liveSnap = JSON.parse(data); st.live = liveSnap; if (mode === 'live') renderLive(); }
+}
+
+function drainSse(buf: string) {
+  const parts = buf.split('\n\n');
+  const rest = parts.pop() ?? '';
+  for (const block of parts) {
+    if (!block.trim() || block.trimStart().startsWith(':')) continue;
+    let event = 'message';
+    const data: string[] = [];
+    for (const line of block.split('\n')) {
+      if (line.startsWith('event:')) event = line.slice(6).trim();
+      else if (line.startsWith('data:')) data.push(line.slice(5).replace(/^ /, ''));
+    }
+    if (data.length) { try { applyStream(event, data.join('\n')); } catch { /* ignore a bad event */ } }
+  }
+  return rest;
+}
+
+// fetch, not EventSource: the stream needs the x-kovan-token header.
+async function connectStream() {
+  let buf = '';
+  for (;;) {
+    try {
+      const res = await fetch('/api/stream', { headers: authHeaders() });
+      if (!res.ok || !res.body) throw new Error(String(res.status));
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      buf = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        buf = drainSse(buf);
+      }
+    } catch { /* server down; retry */ }
+    await new Promise(r => setTimeout(r, 1500));
+  }
 }
 
 function renderAll() {
@@ -313,7 +349,7 @@ function routineCard(r: Routine) {
   return `<div class="job routine" data-routine="${r.id}" style="--c:${c?.color || '#888'}">
     <span class="hexav ghost">${icon('Repeat', 13)}</span>
     <div class="job-main">
-      <div class="top"><span class="who">${esc(c?.name || 'Auto')}</span>${r.needsOk ? `<i class="tag">${icon('Hand', 11)}OK</i>` : ''}${r.paused ? '<i class="tag">paused</i>' : ''}<span class="t">${describeRule(r.rule)}</span></div>
+      <div class="top"><span class="who">${esc(c?.name || 'Auto')}</span>${r.needsOk ? `<i class="tag">${icon('Hand', 11)}OK</i>` : ''}${r.paused ? '<i class="tag">paused</i>' : ''}<span class="t">${esc(describeRule(r.rule))}</span></div>
       <div class="txt">${esc(r.text)}</div>
       <div class="sub">${r.paused ? 'paused' : r.next ? 'next ' + new Date(r.next).toLocaleString([], { weekday: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}</div>
       <div class="acts"><button data-act="run">${icon('Play', 12)}Run</button>${r.paused ? `<button data-act="resume">${icon('Play', 12)}Resume</button>` : `<button data-act="pause">${icon('Pause', 12)}Pause</button>`}<button data-act="delete">${icon('Trash2', 12)}</button></div>
@@ -363,7 +399,7 @@ function refreshCommandHint() {
     const guess = !target && st ? guessDepartment(text, st.depts, st.workers) : '';
     const d = deptOf(target || guess);
     if (d) parts.push(`<span class="h d" style="--c:${d.color}">${icon('ArrowUpRight', 12)} ${target ? '' : 'auto · '}${esc(d.name)}</span>`);
-    if (sched) parts.push(`<span class="h s">${icon('Repeat', 12)} ${describeRule(sched.rule)}</span>`);
+    if (sched) parts.push(`<span class="h s">${icon('Repeat', 12)} ${esc(describeRule(sched.rule))}</span>`);
     if (sw.swarm || swarm) parts.push(`<span class="h w">${icon('Users', 12)} swarm</span>`);
     if (isOutbound(text)) parts.push(`<span class="h o">${icon('Hand', 12)} waits for your OK</span>`);
   }
@@ -436,7 +472,7 @@ function renderChatHeader() {
     <div class="chips2">${busy ? `<span class="c busy"><i class="spin"></i>working</span>` : '<span class="c">idle</span>'}${skills.map(s => `<span class="c">${icon('BookOpen', 11)}${esc(s)}</span>`).join('')}${(w.skills || []).slice(0, 3).map(s => `<span class="c dim">${esc(s)}</span>`).join('')}</div>`;
   el.querySelector('.x')!.addEventListener('click', closeChat);
   const rts = st.routines.filter(r => st.jobs.some(j => j.routineId === r.id && j.worker === w.id));
-  el.querySelector('.ch-rt')!.innerHTML = rts.map(r => `<span>${icon('Repeat', 12)} ${esc(r.text.slice(0, 40))} · ${describeRule(r.rule)}</span>`).join('');
+  el.querySelector('.ch-rt')!.innerHTML = rts.map(r => `<span>${icon('Repeat', 12)} ${esc(r.text.slice(0, 40))} · ${esc(describeRule(r.rule))}</span>`).join('');
   const waiting = st.jobs.filter(j => j.worker === w.id && j.state === 'approval');
   el.querySelectorAll('.msg [data-appr]').forEach(b => { if (!waiting.some(j => j.id === (b as HTMLElement).dataset.appr)) b.parentElement?.remove(); });
 }

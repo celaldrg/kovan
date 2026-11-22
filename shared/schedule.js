@@ -80,12 +80,44 @@ export function parseSchedule(text) {
 
 const pad = n => String(n).padStart(2, '0');
 
+function intIn(value, min, max) {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < min || value > max) return null;
+  return value;
+}
+
+/**
+ * Rebuild a schedule rule from checked numbers.
+ * Strings are dropped so a stored rule cannot carry markup.
+ */
+export function sanitizeRule(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
+  const kind = input.kind;
+  if (kind === 'minutes' || kind === 'hours') {
+    const every = intIn(input.every, 1, 1440);
+    if (every == null) return null;
+    return { kind, every };
+  }
+  if (kind !== 'days') return null;
+  const hour = intIn(input.hour, 0, 23);
+  const minute = intIn(input.minute, 0, 59);
+  if (hour == null || minute == null || !Array.isArray(input.weekdays) || !input.weekdays.length) return null;
+  const weekdays = [];
+  for (const day of input.weekdays) {
+    const n = intIn(day, 0, 6);
+    if (n == null) return null;
+    if (!weekdays.includes(n)) weekdays.push(n);
+  }
+  weekdays.sort((a, b) => a - b);
+  return { kind, hour, minute, weekdays };
+}
+
 export function describeRule(rule) {
-  if (!rule) return '';
-  if (rule.kind === 'minutes') return `every ${rule.every} min`;
-  if (rule.kind === 'hours') return rule.every === 1 ? 'every hour' : `every ${rule.every} h`;
-  const t = `${pad(rule.hour)}:${pad(rule.minute)}`;
-  const d = rule.weekdays || [];
+  const clean = sanitizeRule(rule);
+  if (!clean) return '';
+  if (clean.kind === 'minutes') return `every ${clean.every} min`;
+  if (clean.kind === 'hours') return clean.every === 1 ? 'every hour' : `every ${clean.every} h`;
+  const t = `${pad(clean.hour)}:${pad(clean.minute)}`;
+  const d = clean.weekdays;
   if (d.length === 7) return `daily · ${t}`;
   if (d.length === 5 && [1, 2, 3, 4, 5].every(x => d.includes(x))) return `weekdays · ${t}`;
   return `${d.map(x => DAY_NAMES[x]).join(', ')} · ${t}`;

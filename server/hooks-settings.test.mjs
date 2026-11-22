@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { mergeHooks, removeHooks, installHooks, uninstallHooks, isKovanHook, hookUrl } from './hooks-settings.mjs';
+import { mergeHooks, removeHooks, installHooks, uninstallHooks, isKovanHook } from './hooks-settings.mjs';
 
 const forwarder = path.join('pkg', 'bin', 'hook-forward.mjs');
 
@@ -18,13 +18,16 @@ test('merge keeps existing hooks and does not duplicate on a second pass', () =>
   assert.equal(once.model, 'opus');
   assert.equal(once.hooks.PreToolUse[0].hooks[0].command, 'echo keep-me');
   const ours = once.hooks.PreToolUse[1].hooks[0];
-  assert.equal(ours.type, 'http');
-  assert.equal(ours.url, hookUrl(4700));
+  assert.equal(ours.type, 'command');
+  assert.equal(ours.command, 'node');
+  assert.deepEqual(ours.args, [forwarder, '--port', '4700']);
+  assert.equal(ours.timeout, 8);
   assert.equal(ours.onFailure, undefined);
+  assert.equal(once.hooks.PermissionRequest[0].hooks[0].type, 'command');
   assert.equal(once.hooks.PermissionRequest[0].hooks[0].timeout, 120);
   assert.equal(once.hooks.PermissionRequest[0].hooks[0].onFailure, undefined);
   assert.equal(once.hooks.SessionStart[0].hooks[0].type, 'command');
-  assert.deepEqual(once.hooks.SessionStart[0].hooks[0].args, [forwarder]);
+  assert.deepEqual(once.hooks.SessionStart[0].hooks[0].args, [forwarder, '--port', '4700']);
 
   const twice = mergeHooks(once, { port: 4700, forwarder });
   assert.equal(twice.hooks.PreToolUse.length, 2);
@@ -54,6 +57,10 @@ test('install writes a backup and uninstall restores the other hooks', () => {
   assert.equal(onDisk.theme, 'dark');
   assert.equal(onDisk.hooks.Notification[0].hooks[0].command, 'echo ping');
   assert.ok(onDisk.hooks.PermissionRequest.some(g => g.hooks.some(isKovanHook)));
+  if (process.platform !== 'win32') {
+    assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+    assert.equal(fs.statSync(installed.backup).mode & 0o777, 0o600);
+  }
   uninstallHooks({ file });
   const gone = JSON.parse(fs.readFileSync(file, 'utf8'));
   assert.equal(gone.theme, 'dark');
@@ -61,6 +68,22 @@ test('install writes a backup and uninstall restores the other hooks', () => {
   assert.equal(JSON.stringify(gone).includes('/api/hooks'), false);
   assert.equal(JSON.stringify(gone).includes('hook-forward'), false);
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('reinstall replaces an older http hook and keeps the user hook', () => {
+  const legacy = {
+    hooks: {
+      PreToolUse: [
+        { hooks: [{ type: 'http', url: 'http://127.0.0.1:4700/api/hooks', kovan: 'live-hive' }] },
+        { hooks: [{ type: 'command', command: 'echo stay' }] },
+      ],
+    },
+  };
+  const next = mergeHooks(legacy, { port: 4700, forwarder });
+  assert.equal(next.hooks.PreToolUse.length, 2);
+  assert.equal(next.hooks.PreToolUse[0].hooks[0].command, 'echo stay');
+  assert.equal(next.hooks.PreToolUse[1].hooks[0].type, 'command');
+  assert.equal(next.hooks.PreToolUse.filter(g => g.hooks.some(h => h.type === 'http')).length, 0);
 });
 
 test('install refuses to clobber invalid JSON', () => {

@@ -12,7 +12,9 @@
 
 Local-first · one command to attach hooks · demo runs with zero setup
 
+[![CI](https://github.com/celaldrg/kovan/actions/workflows/ci.yml/badge.svg)](https://github.com/celaldrg/kovan/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-f5a524.svg)](LICENSE)
+[![version](https://img.shields.io/badge/version-0.1.1-2dd4bf)](CHANGELOG.md)
 ![Node 20+](https://img.shields.io/badge/node-%3E%3D20-2dd4bf)
 ![three.js](https://img.shields.io/badge/three.js-r170-black)
 
@@ -62,17 +64,19 @@ npm install
 npm start            # builds once, then http://localhost:4700
 ```
 
-Attach Kovan to Claude Code once:
+Attach Kovan to Claude Code once, from this clone:
 
 ```bash
-npx kovan hooks install
+node bin/kovan.mjs hooks install
 ```
 
-That merges HTTP hooks into your Claude Code user settings and writes a timestamped backup next to the file. Your existing hooks stay. `npx kovan hooks uninstall` removes only Kovan's entries.
+That merges command hooks into your Claude Code user settings and writes a timestamped backup next to the file, both mode 0600. Your existing hooks stay. `node bin/kovan.mjs hooks uninstall` removes only Kovan's entries. `npm run hooks:install` and `npm run hooks:uninstall` are the same commands.
+
+Do not run `npx kovan`. The npm package name is not published by this project, so that command would download whoever owns the name.
 
 Then start a Claude Code session. Each project you work in becomes a zone, and each session becomes a bee. State comes from Claude Code hook events: `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, `Notification`, `SubagentStart`, `SubagentStop`, `Stop`, `StopFailure`, and `SessionEnd`.
 
-`SessionStart` cannot be an HTTP hook in Claude Code (only command and MCP hooks run for that event), so the installer registers a small command that forwards the same JSON to Kovan. If Kovan is not running, that command exits quietly.
+Every Kovan hook is that same forwarder. It reads the per-launch token from the data directory and posts the payload to `127.0.0.1`. If Kovan is not running, the token file is missing, or the wait ends, the command exits quietly and does not allow anything. After upgrading from 0.1.0, run the installer again so older HTTP hooks are replaced. Your other hooks are left in place.
 
 ### Approve from the hive
 
@@ -107,10 +111,10 @@ The original hive is still in the app: six departments, swarm tasks, the knowled
 | `npm start` | Build if needed, then serve http://localhost:4700 |
 | `npm run dev` | API + Vite (http://localhost:5180) |
 | `npm run demo` | Live hive with simulated sessions, no Claude login |
-| `npm test` | Hook parsing, permission round-trip, settings merge, usage, schedules |
+| `npm test` | Auth, hooks, schedules, permissions, settings merge |
 | `npm run build` | Type-check and build the web app |
-| `npx kovan hooks install` | Merge Kovan's hooks into Claude Code settings |
-| `npx kovan hooks uninstall` | Remove Kovan's hooks, leave yours |
+| `node bin/kovan.mjs hooks install` | Merge Kovan's hooks into Claude Code settings |
+| `node bin/kovan.mjs hooks uninstall` | Remove Kovan's hooks, leave yours |
 
 `--settings <file>` and `--port <n>` override the settings path and the hook URL. The default file is `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`).
 
@@ -148,13 +152,37 @@ The original hive is still in the app: six departments, swarm tasks, the knowled
 ## How the hive is wired
 
 ```
-Claude Code  --HTTP POST-->  /api/hooks  -->  live session store  --SSE-->  3D hive
-                     |
-                     +-- PermissionRequest is held until Allow / Deny / Always
-                         or until the wait ends with an empty body (terminal prompt)
+Claude Code --command--> hook-forward --POST + token--> /api/hooks --> live session store --SSE--> 3D hive
+                                      |
+                                      +-- PermissionRequest is held until Allow / Deny / Always
+                                          or until the wait ends with an empty body (terminal prompt)
 ```
 
 Company mode still runs through `server/hive.mjs` (routing, swarms, approvals, routines) and the vault under `vault/`. Nothing about a live session is written into the vault.
+
+## Security model
+
+Kovan is a local dashboard for a process that can approve shell commands. The defaults match that:
+
+- The server binds `127.0.0.1` only. Set `KOVAN_HOST` to listen somewhere else, and set `KOVAN_HOST_ALLOW` to the hostnames browsers will send. Binding `0.0.0.0` does not by itself trust every `Host` header.
+- Each launch writes a new token to a mode `0600` file in the data directory and requires it as `x-kovan-token` on `/api/*`. The installed hooks read that file. The page receives the token in a meta tag.
+- `Host` must be loopback (or a name you allowed). State-changing requests must send `Content-Type: application/json`. `Origin`, when present, must be this server. There is no permissive CORS header.
+- Model, effort, department, and schedule rules are checked against allowlists. The Claude CLI receives `--model=<id>` as one argument. The prompt is written to stdin.
+- The web app escapes text that it inserts as HTML and sends a Content-Security-Policy. Script sources are same-origin files only.
+- Oversized bodies get `413`. Unexpected failures return a generic message; details stay in the server log.
+- Hooks are installed without `onFailure: "block"`. A missed hook never becomes an allow.
+
+See [SECURITY.md](SECURITY.md) for reporting and the threat model.
+
+## FAQ
+
+**Why not `npx kovan`?** That npm name is not this project's. Install from a clone and run `node bin/kovan.mjs`.
+
+**Does Kovan auto-allow a permission prompt?** No. If the server is down or the wait ends, Claude Code shows its own terminal prompt.
+
+**Can another website on my machine click Allow?** It would need the launch token, a loopback `Host`, and a JSON request that passes the `Origin` check. The server does not answer CORS preflights.
+
+**Where is the token?** In the data directory (`data/token`, or `$KOVAN_DATA/token`), mode `0600`. It changes every launch and is not printed. Hooks read `data/token` in the clone unless `KOVAN_DATA` or `KOVAN_TOKEN_FILE` is set in the environment Claude Code inherits.
 
 ---
 
@@ -164,7 +192,7 @@ Company mode still runs through `server/hive.mjs` (routing, swarms, approvals, r
 
 ```bash
 npm install && npm start
-npx kovan hooks install
+node bin/kovan.mjs hooks install
 npm run demo
 ```
 

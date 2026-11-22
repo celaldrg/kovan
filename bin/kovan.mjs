@@ -1,11 +1,12 @@
 #!/usr/bin/env node
-// `npx kovan hooks install` merges Kovan into Claude Code user settings.
-// `npx kovan hooks uninstall` removes only those entries.
+// `node bin/kovan.mjs hooks install` merges Kovan into Claude Code user settings.
+// `node bin/kovan.mjs hooks uninstall` removes only those entries.
+// Run this from a clone. The npm name `kovan` is not published by this project.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { installHooks, uninstallHooks, hookUrl } from '../server/hooks-settings.mjs';
+import { installHooks, uninstallHooks } from '../server/hooks-settings.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const forwarder = path.join(here, 'hook-forward.mjs');
@@ -33,11 +34,14 @@ const [group, action] = argv;
 if (group !== 'hooks' || (action !== 'install' && action !== 'uninstall')) {
   console.log(`Kovan hooks
 
-  npx kovan hooks install      merge Kovan into Claude Code user settings
-  npx kovan hooks uninstall    remove Kovan's hooks, leave yours in place
+  node bin/kovan.mjs hooks install      merge Kovan into Claude Code user settings
+  node bin/kovan.mjs hooks uninstall    remove Kovan's hooks, leave yours in place
 
   --settings <file>   settings file (default: ~/.claude/settings.json)
   --port <n>          Kovan port (default: 4700, or kovan.config.json)
+
+Run these from a clone of this repo. Do not use \`npx kovan\`: that npm name
+is not published by this project.
 
 If Kovan is not running, or a permission request times out, Claude Code
 falls back to its normal terminal prompt. Kovan never auto-allows.`);
@@ -52,6 +56,7 @@ try {
     console.log(`  endpoint  ${result.url}`);
     console.log(`  backup    ${result.backup || '(new file, nothing to back up)'}`);
     console.log('Start Kovan with `npm start`, then open a Claude Code session.');
+    console.log('Each launch writes a new token in the data directory. The hook reads data/token unless KOVAN_DATA is set.');
     console.log('If Kovan is stopped, Claude Code keeps its own permission prompt.');
   } else {
     const result = uninstallHooks({ file });
@@ -62,5 +67,3 @@ try {
   console.error(err.message || err);
   process.exit(1);
 }
-
-void hookUrl;
